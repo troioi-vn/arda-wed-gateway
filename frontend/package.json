@@ -1,0 +1,27 @@
+{
+  "name": "arda-web-gateway-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "api:generate": "orval --config orval.config.ts"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "orval": "^7.6.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.1"
+  }
+}
