@@ -1,0 +1,273 @@
+openapi: 3.0.3
+info:
+  title: Arda Web Gateway API
+  version: 0.1.0
+  description: >
+    MVP HTTP contract for Arda Web Gateway. WebSocket remains primary for live terminal events.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v0/health:
+    get:
+      operationId: getHealth
+      summary: Service health and build metadata
+      responses:
+        "200":
+          description: Healthy response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessHealthResponse"
+  /api/v0/session/connect:
+    post:
+      operationId: postSessionConnect
+      summary: Start gateway-to-MUD session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionConnectRequest"
+      responses:
+        "200":
+          description: Session connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessSessionStatusResponse"
+        default:
+          $ref: "#/components/responses/ErrorEnvelope"
+  /api/v0/session/disconnect:
+    post:
+      operationId: postSessionDisconnect
+      summary: Gracefully stop session
+      responses:
+        "200":
+          description: Session disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessSessionStatusResponse"
+        default:
+          $ref: "#/components/responses/ErrorEnvelope"
+  /api/v0/session/status:
+    get:
+      operationId: getSessionStatus
+      summary: Current session status and queue depth
+      responses:
+        "200":
+          description: Current status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessSessionStatusResponse"
+        default:
+          $ref: "#/components/responses/ErrorEnvelope"
+  /api/v0/state/snapshot:
+    get:
+      operationId: getStateSnapshot
+      summary: Latest parser-derived state projection
+      responses:
+        "200":
+          description: State snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessStateSnapshotResponse"
+        default:
+          $ref: "#/components/responses/ErrorEnvelope"
+  /api/v0/suggestions/latest:
+    get:
+      operationId: getSuggestionsLatest
+      summary: Latest valid suggestion set
+      responses:
+        "200":
+          description: Latest suggestion payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessSuggestionResponse"
+        default:
+          $ref: "#/components/responses/ErrorEnvelope"
+  /api/v0/commands/enqueue:
+    post:
+      operationId: postCommandsEnqueue
+      summary: Enqueue user command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnqueueCommandRequest"
+      responses:
+        "200":
+          description: Accepted/rejected enqueue result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessEnqueueResponse"
+        default:
+          $ref: "#/components/responses/ErrorEnvelope"
+components:
+  responses:
+    ErrorEnvelope:
+      description: Error response envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    Meta:
+      type: object
+      required: [request_id, timestamp]
+      properties:
+        request_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_REQUEST
+            - SESSION_NOT_CONNECTED
+            - SESSION_ALREADY_CONNECTED
+            - QUEUE_FULL
+            - UPSTREAM_UNAVAILABLE
+            - INTERNAL_ERROR
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      required: [error, meta]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    HealthPayload:
+      type: object
+      required: [status, version, commit]
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+        commit:
+          type: string
+    SessionConnectRequest:
+      type: object
+      required: [host, port]
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        credential_alias:
+          type: string
+    SessionStatusPayload:
+      type: object
+      required: [connected, queue_depth]
+      properties:
+        connected:
+          type: boolean
+        queue_depth:
+          type: integer
+        last_activity_at:
+          type: string
+          format: date-time
+    SuggestionPayload:
+      type: object
+      required: [commands, reason, expected_outcome]
+      properties:
+        commands:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+        expected_outcome:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+    StateSnapshotPayload:
+      type: object
+      properties:
+        location:
+          type: string
+        hp:
+          type: integer
+        mana:
+          type: integer
+        move:
+          type: integer
+        inventory:
+          type: array
+          items:
+            type: string
+        equipment:
+          type: object
+          additionalProperties:
+            type: string
+    EnqueueCommandRequest:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+    EnqueuePayload:
+      type: object
+      required: [accepted, queue_depth]
+      properties:
+        accepted:
+          type: boolean
+        queue_depth:
+          type: integer
+    SuccessHealthResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/HealthPayload"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SuccessSessionStatusResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SessionStatusPayload"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SuccessStateSnapshotResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/StateSnapshotPayload"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SuccessSuggestionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SuggestionPayload"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SuccessEnqueueResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/EnqueuePayload"
+        meta:
+          $ref: "#/components/schemas/Meta"
