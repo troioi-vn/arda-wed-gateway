@@ -6,11 +6,13 @@
 
  * OpenAPI spec version: 0.1.0
  */
+import type { TerminalEventEvent } from './terminalEventEvent';
 
-export interface SessionStatusPayload {
+export interface TerminalEvent {
+  event: TerminalEventEvent;
   session_id: string;
-  connected: boolean;
-  queue_depth: number;
+  text?: string;
+  queue_depth?: number;
   queue_max?: number;
-  last_activity_at?: string;
+  timestamp: string;
 }

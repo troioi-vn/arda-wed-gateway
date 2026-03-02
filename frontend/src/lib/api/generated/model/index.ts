@@ -26,3 +26,5 @@ export * from './successSessionStatusResponse';
 export * from './successStateSnapshotResponse';
 export * from './successSuggestionResponse';
 export * from './suggestionPayload';
+export * from './terminalEvent';
+export * from './terminalEventEvent';

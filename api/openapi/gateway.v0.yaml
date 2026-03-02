@@ -7,6 +7,20 @@ info:
 servers:
   - url: http://localhost:8080
 paths:
+  /api/v0/ws/terminal:
+    get:
+      operationId: getTerminalWebsocket
+      summary: Upgrade to terminal WebSocket stream
+      description: >
+        Performs HTTP Upgrade to WebSocket. Runtime events carry session lifecycle and
+        terminal output payloads using schemas under `components.schemas`.
+      responses:
+        "101":
+          description: Switching Protocols (WebSocket upgrade successful)
+        "400":
+          $ref: "#/components/responses/ErrorEnvelope"
+        default:
+          $ref: "#/components/responses/ErrorEnvelope"
   /api/v0/health:
     get:
       operationId: getHealth
@@ -174,11 +188,15 @@ components:
           type: string
     SessionStatusPayload:
       type: object
-      required: [connected, queue_depth]
+      required: [session_id, connected, queue_depth]
       properties:
+        session_id:
+          type: string
         connected:
           type: boolean
         queue_depth:
+          type: integer
+        queue_max:
           type: integer
         last_activity_at:
           type: string
@@ -225,12 +243,37 @@ components:
           type: string
     EnqueuePayload:
       type: object
-      required: [accepted, queue_depth]
+      required: [accepted, queue_depth, queue_max]
       properties:
         accepted:
           type: boolean
         queue_depth:
           type: integer
+        queue_max:
+          type: integer
+    TerminalEvent:
+      type: object
+      required: [event, session_id, timestamp]
+      properties:
+        event:
+          type: string
+          enum:
+            - session.connected
+            - session.disconnected
+            - terminal.output
+            - queue.accepted
+            - queue.rejected
+        session_id:
+          type: string
+        text:
+          type: string
+        queue_depth:
+          type: integer
+        queue_max:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
     SuccessHealthResponse:
       type: object
       required: [data, meta]

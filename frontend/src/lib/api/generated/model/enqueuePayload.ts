@@ -10,4 +10,5 @@
 export interface EnqueuePayload {
   accepted: boolean;
   queue_depth: number;
+  queue_max: number;
 }

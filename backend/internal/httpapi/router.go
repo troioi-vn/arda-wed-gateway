@@ -8,22 +8,44 @@ import (
 	"time"
 
 	"github.com/athanasius/arda-web-gateway/backend/internal/config"
+	"github.com/athanasius/arda-web-gateway/backend/internal/gateway"
 )
 
 type Router struct {
 	cfg     config.Config
 	logger  *slog.Logger
 	counter uint64
+	manager *gateway.Manager
+	metrics *gateway.Metrics
 }
 
 func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
+	queueInterval := cfg.QueueSendInterval
+	if queueInterval <= 0 {
+		queueInterval = 500 * time.Millisecond
+	}
+
+	queueMaxDepth := cfg.QueueMaxDepth
+	if queueMaxDepth <= 0 {
+		queueMaxDepth = 20
+	}
+
+	metrics := gateway.NewMetrics()
 	r := &Router{
-		cfg:    cfg,
-		logger: logger,
+		cfg:     cfg,
+		logger:  logger,
+		metrics: metrics,
+		manager: gateway.NewManager(queueInterval, queueMaxDepth, logger, metrics),
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v0/health", r.handleHealth)
+	mux.HandleFunc("GET /api/v0/session/status", r.handleSessionStatus)
+	mux.HandleFunc("POST /api/v0/session/connect", r.handleSessionConnect)
+	mux.HandleFunc("POST /api/v0/session/disconnect", r.handleSessionDisconnect)
+	mux.HandleFunc("POST /api/v0/commands/enqueue", r.handleEnqueueCommand)
+	mux.HandleFunc("GET /api/v0/ws/terminal", r.handleTerminalWS)
+	mux.HandleFunc("GET /metrics", r.handleMetrics)
 	return withRequestLogging(r.logger, mux)
 }
 

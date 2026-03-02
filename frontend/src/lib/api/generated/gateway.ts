@@ -27,6 +27,60 @@ export type HTTPStatusCode5xx = 500 | 501 | 502 | 503 | 504 | 505 | 507 | 511;
 export type HTTPStatusCodes = HTTPStatusCode1xx | HTTPStatusCode2xx | HTTPStatusCode3xx | HTTPStatusCode4xx | HTTPStatusCode5xx;
 
 /**
+ * Performs HTTP Upgrade to WebSocket. Runtime events carry session lifecycle and terminal output payloads using schemas under `components.schemas`.
+
+ * @summary Upgrade to terminal WebSocket stream
+ */
+export type getTerminalWebsocketResponse101 = {
+  data: void
+  status: 101
+}
+
+export type getTerminalWebsocketResponse400 = {
+  data: ErrorEnvelopeResponse
+  status: 400
+}
+
+export type getTerminalWebsocketResponseDefault = {
+  data: ErrorEnvelopeResponse
+  status: Exclude<HTTPStatusCodes, 101 | 400>
+}
+    
+;
+export type getTerminalWebsocketResponseError = (getTerminalWebsocketResponse101 | getTerminalWebsocketResponse400 | getTerminalWebsocketResponseDefault) & {
+  headers: Headers;
+};
+
+export type getTerminalWebsocketResponse = (getTerminalWebsocketResponseError)
+
+export const getGetTerminalWebsocketUrl = () => {
+
+
+  
+
+  return `/api/v0/ws/terminal`
+}
+
+export const getTerminalWebsocket = async ( options?: RequestInit): Promise<getTerminalWebsocketResponse> => {
+  
+  const res = await fetch(getGetTerminalWebsocketUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  
+  const data: getTerminalWebsocketResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getTerminalWebsocketResponse
+}
+
+
+
+/**
  * @summary Service health and build metadata
  */
 export type getHealthResponse200 = {
