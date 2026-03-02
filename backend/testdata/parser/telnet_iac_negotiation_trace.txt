@@ -1,0 +1,2 @@
+# fixture: telnet_iac_negotiation_trace.txt
+# seed with captured Arda transcript samples

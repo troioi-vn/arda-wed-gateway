@@ -1,0 +1,2 @@
+# fixture: combat_condition_phrases_ru.txt
+# seed with captured Arda transcript samples

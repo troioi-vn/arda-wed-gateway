@@ -1,0 +1,2 @@
+# fixture: prompt_hp_ma_mv_exp_variants.txt
+# seed with captured Arda transcript samples

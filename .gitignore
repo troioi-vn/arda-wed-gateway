@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+backend/bin/
+
+.env
+.DS_Store

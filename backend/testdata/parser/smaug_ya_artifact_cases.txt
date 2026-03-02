@@ -1,0 +1,2 @@
+# fixture: smaug_ya_artifact_cases.txt
+# seed with captured Arda transcript samples

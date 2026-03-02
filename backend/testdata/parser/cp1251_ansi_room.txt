@@ -1,0 +1,2 @@
+# fixture: cp1251_ansi_room.txt
+# seed with captured Arda transcript samples

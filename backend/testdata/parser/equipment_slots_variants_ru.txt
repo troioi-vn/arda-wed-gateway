@@ -1,0 +1,2 @@
+# fixture: equipment_slots_variants_ru.txt
+# seed with captured Arda transcript samples

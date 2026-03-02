@@ -1,0 +1,2 @@
+# fixture: status_line_variants.txt
+# seed with captured Arda transcript samples
