@@ -2,6 +2,12 @@
 
 Project conventions for coding agents working in the `arda-web-gateway` repository.
 
+## Current Project Phase (IMPORTANT)
+We are intentionally in an extended **planning-first** phase.
+- Prefer refining scope, contracts, milestones, and risks before coding.
+- Avoid jumping into implementation unless the user explicitly asks for code.
+- Keep plans concrete enough that implementation tasks can be executed without ambiguity.
+
 ## Developer Learning Goal (CRITICAL)
 **The developer (Athanasius) is actively using this project to learn Golang.** 
 - **Explain Go Idioms:** Whenever writing Go code, explain the concepts being used (e.g., Goroutines, Channels, Mutexes, Interfaces, and idiomatic Error handling).
@@ -9,6 +15,13 @@ Project conventions for coding agents working in the `arda-web-gateway` reposito
 - **Share "Aha!" Moments:** Point out interesting language features, concurrency patterns, or elegant standard library uses after completing a coding task.
 - **Discuss First:** When in planning mode, discuss technical approaches before writing code. In coding mode, simply do it, but explain the mechanics afterward.
 - **Git Protocol:** The developer handles commits. Do not commit unless explicitly asked.
+
+## Documentation Sources of Truth
+- `plan.md` contains detailed iterative planning decisions.
+- `docs/roadmap.md` contains high-level roadmap and phase outcomes.
+- `README.md` explains project purpose, architecture, and onboarding context.
+- Keep these three docs aligned when scope changes.
+- Keep milestone names and AI mode labels identical across all three docs.
 
 ## Project Goal
 Build a safe, observable Arda MUD web gateway that:
@@ -23,6 +36,7 @@ Build a safe, observable Arda MUD web gateway that:
 - **Go Concurrency:** Utilize Goroutines and Channels to decouple the Telnet read loop, WebSocket broadcasting, and slow OpenRouter API calls.
 - **Command Queuing:** The backend MUST buffer and rate-limit commands (from fast typing or macros) to prevent flooding the MUD server.
 - **State Generation:** Store parsed state (inventory, location, objects) in SQLite. Dynamically generate `character.md` and `map.md` raw strings in-memory to bundle into OpenRouter prompts. Do not physically write these to disk.
+- **API Contract First:** Define backend HTTP contract in OpenAPI first; generate frontend API client and docs via Orval.
 
 ## LLM Operating Regimes
 1. **Auto-Suggest Mode:** Triggers strictly on new text updates. Provides context-aware action buttons on the UI below the terminal.
@@ -36,7 +50,16 @@ LLM output must be structured strictly (typically JSON depending on the prompt) 
 - `reason` for actions
 - `expected_outcome`
 
+## Planning Quality Bar
+When updating plans, include:
+- Explicit goals and non-goals.
+- Acceptance criteria per milestone.
+- Risks and mitigations.
+- Testing strategy tied to each capability.
+- Operational defaults (queue policy, failure behavior, observability).
+
 ## Testing Expectations
 - Validate WebSocket channel broadcasting.
 - Ensure the Go parser handles Telnet ANSI streams and Russian generic decoding correctly.
 - Test command queuing delay (e.g., simulating 10 rapid inputs).
+- Validate OpenAPI contract consistency and generated-client workflow.
