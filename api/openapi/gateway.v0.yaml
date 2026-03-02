@@ -14,6 +14,7 @@ paths:
       description: >
         Performs HTTP Upgrade to WebSocket. Runtime events carry session lifecycle and
         terminal output payloads using schemas under `components.schemas`.
+        First message after connect is `session.status` so the frontend can hydrate queue/session metadata.
       responses:
         "101":
           description: Switching Protocols (WebSocket upgrade successful)
@@ -252,17 +253,123 @@ components:
         queue_max:
           type: integer
     TerminalEvent:
+      oneOf:
+        - $ref: "#/components/schemas/TerminalSessionStatusEvent"
+        - $ref: "#/components/schemas/TerminalSessionConnectedEvent"
+        - $ref: "#/components/schemas/TerminalSessionDisconnectedEvent"
+        - $ref: "#/components/schemas/TerminalOutputEvent"
+        - $ref: "#/components/schemas/QueueAcceptedEvent"
+        - $ref: "#/components/schemas/QueueRejectedEvent"
+      discriminator:
+        propertyName: event
+      description: Runtime WebSocket event envelope for terminal stream updates.
+    TerminalSessionStatusEvent:
       type: object
-      required: [event, session_id, timestamp]
+      required: [event, session_id, connected, queue_depth, queue_max, timestamp]
       properties:
         event:
           type: string
-          enum:
-            - session.connected
-            - session.disconnected
-            - terminal.output
-            - queue.accepted
-            - queue.rejected
+          enum: [session.status]
+        session_id:
+          type: string
+        connected:
+          type: boolean
+        queue_depth:
+          type: integer
+        queue_max:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+      example:
+        event: session.status
+        session_id: s-1
+        connected: false
+        queue_depth: 0
+        queue_max: 20
+        timestamp: "2026-03-02T11:12:13.000000000Z"
+    TerminalSessionConnectedEvent:
+      type: object
+      required: [event, session_id, connected, text, queue_depth, queue_max, timestamp]
+      properties:
+        event:
+          type: string
+          enum: [session.connected]
+        session_id:
+          type: string
+        connected:
+          type: boolean
+        text:
+          type: string
+        queue_depth:
+          type: integer
+        queue_max:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+      example:
+        event: session.connected
+        session_id: s-1
+        connected: true
+        text: connected to 86.110.194.3:7000
+        queue_depth: 0
+        queue_max: 20
+        timestamp: "2026-03-02T11:12:14.000000000Z"
+    TerminalSessionDisconnectedEvent:
+      type: object
+      required: [event, session_id, connected, text, queue_depth, queue_max, timestamp]
+      properties:
+        event:
+          type: string
+          enum: [session.disconnected]
+        session_id:
+          type: string
+        connected:
+          type: boolean
+        text:
+          type: string
+        queue_depth:
+          type: integer
+        queue_max:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+      example:
+        event: session.disconnected
+        session_id: s-1
+        connected: false
+        text: manual disconnect, dropped_unsent=2
+        queue_depth: 0
+        queue_max: 20
+        timestamp: "2026-03-02T11:12:20.000000000Z"
+    TerminalOutputEvent:
+      type: object
+      required: [event, session_id, text, timestamp]
+      properties:
+        event:
+          type: string
+          enum: [terminal.output]
+        session_id:
+          type: string
+        text:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+      example:
+        event: terminal.output
+        session_id: s-1
+        text: "Exits: north east"
+        timestamp: "2026-03-02T11:12:15.000000000Z"
+    QueueAcceptedEvent:
+      type: object
+      required: [event, session_id, text, queue_depth, queue_max, timestamp]
+      properties:
+        event:
+          type: string
+          enum: [queue.accepted]
         session_id:
           type: string
         text:
@@ -274,6 +381,42 @@ components:
         timestamp:
           type: string
           format: date-time
+      example:
+        event: queue.accepted
+        session_id: s-1
+        text: look
+        queue_depth: 1
+        queue_max: 20
+        timestamp: "2026-03-02T11:12:16.000000000Z"
+    QueueRejectedEvent:
+      type: object
+      required: [event, session_id, text, queue_depth, queue_max, queue_reject_code, timestamp]
+      properties:
+        event:
+          type: string
+          enum: [queue.rejected]
+        session_id:
+          type: string
+        text:
+          type: string
+        queue_depth:
+          type: integer
+        queue_max:
+          type: integer
+        queue_reject_code:
+          type: string
+          enum: [QUEUE_FULL]
+        timestamp:
+          type: string
+          format: date-time
+      example:
+        event: queue.rejected
+        session_id: s-1
+        text: "command rejected: queue full"
+        queue_depth: 20
+        queue_max: 20
+        queue_reject_code: QUEUE_FULL
+        timestamp: "2026-03-02T11:12:17.000000000Z"
     SuccessHealthResponse:
       type: object
       required: [data, meta]

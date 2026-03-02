@@ -35,7 +35,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
 		cfg:     cfg,
 		logger:  logger,
 		metrics: metrics,
-		manager: gateway.NewManager(queueInterval, queueMaxDepth, logger, metrics),
+		manager: gateway.NewManager(queueInterval, queueMaxDepth, logger, metrics, nil),
 	}
 
 	mux := http.NewServeMux()

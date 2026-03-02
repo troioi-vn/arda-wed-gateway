@@ -1,7 +1,7 @@
 :root {
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   color: #f4f0e8;
-  background: radial-gradient(circle at top, #2b221a 0%, #15120f 55%, #0d0b0a 100%);
+  background: radial-gradient(circle at 12% -5%, #4f3a25 0%, #18120d 48%, #090705 100%);
 }
 
 * {
@@ -17,10 +17,15 @@ body {
   min-height: 100vh;
 }
 
+button,
+input {
+  font: inherit;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1fr 320px;
-  grid-template-rows: 1fr 180px;
+  grid-template-rows: 1fr 220px;
   gap: 12px;
   padding: 12px;
   min-height: 100vh;
@@ -29,10 +34,10 @@ body {
 .terminal-pane,
 .map-pane,
 .suggestion-pane {
-  border: 1px solid #4f412f;
-  border-radius: 10px;
-  background: rgba(17, 14, 12, 0.85);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  border: 1px solid #6f583a;
+  border-radius: 12px;
+  background: rgba(13, 10, 8, 0.9);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.42);
 }
 
 .terminal-pane {
@@ -42,10 +47,62 @@ body {
   flex-direction: column;
 }
 
+.pane-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #6f583a;
+  font-weight: 700;
+}
+
+.meta {
+  color: #cfb18b;
+  font-size: 0.85rem;
+}
+
 .terminal-body {
   flex: 1;
+  overflow: auto;
   padding: 12px;
   font-family: "IBM Plex Mono", "Consolas", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-line {
+  line-height: 1.35;
+}
+
+.command-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid #4d3c28;
+}
+
+.command-input,
+.panel-body input {
+  width: 100%;
+  border: 1px solid #735d40;
+  border-radius: 8px;
+  background: #16110d;
+  color: #f4f0e8;
+  padding: 8px 10px;
+}
+
+button {
+  border: 1px solid #866443;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #8e6a45 0%, #6b4d2f 100%);
+  color: #fff7ec;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .map-pane {
@@ -53,25 +110,68 @@ body {
   grid-row: 1 / 2;
 }
 
+.panel-body {
+  padding: 12px;
+}
+
+.session-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.92rem;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
 .suggestion-pane {
   grid-column: 1 / 3;
   grid-row: 2 / 3;
 }
 
-header {
-  padding: 10px 12px;
-  border-bottom: 1px solid #4f412f;
-  font-weight: 700;
+.queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.panel-body {
-  padding: 12px;
+.inline-status {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(71, 56, 38, 0.55);
 }
 
-@media (max-width: 920px) {
+.inline-status.error {
+  background: rgba(124, 44, 44, 0.64);
+  border: 1px solid #cd7b7b;
+}
+
+.toast-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toast {
+  border: 1px solid #8b6a4a;
+  border-radius: 999px;
+  background: rgba(56, 37, 20, 0.9);
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(360px, 1fr) auto auto;
+    grid-template-rows: minmax(380px, 1fr) auto auto;
   }
 
   .terminal-pane,

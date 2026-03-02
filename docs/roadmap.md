@@ -71,7 +71,7 @@ Exit criteria:
 - Macro creation and replay are predictable and transparent to user.
 
 ## Cross-Cutting Streams
-- Observability: structured logs + core metrics from early stages.
+- Observability: structured logs + core metrics from early stages (including queue send-latency histogram and dropped-unsent per-session counters).
 - Testing: balanced unit + integration strategy with parser golden fixtures, Telnet negotiation traces, and simulator-backed flow tests.
 - Developer Experience: OpenAPI + Orval workflow, reproducible local + Docker parity.
 

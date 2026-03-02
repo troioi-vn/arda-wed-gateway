@@ -20,7 +20,7 @@ func TestCommandQueueBurstOrderAndRateLimit(t *testing.T) {
 	interval := 40 * time.Millisecond
 	sent := make(chan sentCommand, 10)
 
-	queue := NewCommandQueue(20, interval, func(_ context.Context, command string) error {
+	queue := NewCommandQueue("s-test", 20, interval, func(_ context.Context, command string) error {
 		sent <- sentCommand{command: command, at: time.Now()}
 		return nil
 	}, slog.Default(), NewMetrics())
@@ -67,7 +67,7 @@ func TestCommandQueueBurstOrderAndRateLimit(t *testing.T) {
 func TestCommandQueueRejectsWhenFull(t *testing.T) {
 	t.Parallel()
 
-	queue := NewCommandQueue(3, time.Second, func(_ context.Context, _ string) error {
+	queue := NewCommandQueue("s-test", 3, time.Second, func(_ context.Context, _ string) error {
 		return nil
 	}, slog.Default(), NewMetrics())
 
@@ -92,7 +92,7 @@ func TestCommandQueueRejectsWhenFull(t *testing.T) {
 func TestCommandQueueStopDropsPending(t *testing.T) {
 	t.Parallel()
 
-	queue := NewCommandQueue(20, time.Hour, func(_ context.Context, _ string) error {
+	queue := NewCommandQueue("s-test", 20, time.Hour, func(_ context.Context, _ string) error {
 		return nil
 	}, slog.Default(), NewMetrics())
 	queue.Start()

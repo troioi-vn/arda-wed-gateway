@@ -16,25 +16,27 @@ type CommandQueue struct {
 	mu       sync.Mutex
 	commands []string
 
-	maxDepth int
-	interval time.Duration
-	sender   SenderFunc
-	logger   *slog.Logger
-	metrics  *Metrics
+	sessionID string
+	maxDepth  int
+	interval  time.Duration
+	sender    SenderFunc
+	logger    *slog.Logger
+	metrics   *Metrics
 
 	running bool
 	stopCh  chan struct{}
 	doneCh  chan struct{}
 }
 
-func NewCommandQueue(maxDepth int, interval time.Duration, sender SenderFunc, logger *slog.Logger, metrics *Metrics) *CommandQueue {
+func NewCommandQueue(sessionID string, maxDepth int, interval time.Duration, sender SenderFunc, logger *slog.Logger, metrics *Metrics) *CommandQueue {
 	return &CommandQueue{
-		commands: make([]string, 0, maxDepth),
-		maxDepth: maxDepth,
-		interval: interval,
-		sender:   sender,
-		logger:   logger,
-		metrics:  metrics,
+		commands:  make([]string, 0, maxDepth),
+		sessionID: sessionID,
+		maxDepth:  maxDepth,
+		interval:  interval,
+		sender:    sender,
+		logger:    logger,
+		metrics:   metrics,
 	}
 }
 
@@ -100,6 +102,7 @@ func (q *CommandQueue) StopAndDrop() int {
 
 	if dropped > 0 {
 		q.metrics.AddQueueDropped(dropped)
+		q.metrics.AddQueueDroppedForSession(q.sessionID, dropped)
 	}
 
 	return dropped
@@ -127,8 +130,10 @@ func (q *CommandQueue) run(stopCh <-chan struct{}, doneCh chan<- struct{}) {
 				continue
 			}
 
+			elapsed := time.Since(start)
 			q.metrics.IncQueueSent()
-			q.logger.Info("command sent", "command", command, "elapsed_ms", time.Since(start).Milliseconds())
+			q.metrics.ObserveQueueSendLatency(elapsed)
+			q.logger.Info("command sent", "command", command, "elapsed_ms", elapsed.Milliseconds())
 		}
 	}
 }

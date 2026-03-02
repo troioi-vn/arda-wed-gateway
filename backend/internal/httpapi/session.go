@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/athanasius/arda-web-gateway/backend/internal/gateway"
@@ -50,9 +52,16 @@ func (r *Router) handleSessionConnect(w http.ResponseWriter, req *http.Request) 
 
 	status, err := r.manager.Connect(payload.Host, payload.Port)
 	if err != nil {
-		if errors.Is(err, gateway.ErrSessionAlreadyConnected) {
+		switch {
+		case errors.Is(err, gateway.ErrSessionAlreadyConnected):
 			writeError(w, http.StatusConflict, requestID, "SESSION_ALREADY_CONNECTED", "session is already connected", map[string]any{
 				"session_id": status.SessionID,
+			})
+			return
+		case errors.Is(err, gateway.ErrUpstreamUnavailable):
+			writeError(w, http.StatusBadGateway, requestID, "UPSTREAM_UNAVAILABLE", "failed to reach upstream host", map[string]any{
+				"host": payload.Host,
+				"port": payload.Port,
 			})
 			return
 		}
@@ -148,14 +157,49 @@ func (r *Router) handleMetrics(w http.ResponseWriter, req *http.Request) {
 			"# TYPE gateway_queue_dropped_total counter\n"+
 			"gateway_queue_dropped_total %d\n"+
 			"# TYPE gateway_events_broadcast_total counter\n"+
-			"gateway_events_broadcast_total %d\n",
+			"gateway_events_broadcast_total %d\n"+
+			"# TYPE gateway_queue_send_latency_seconds histogram\n%s"+
+			"gateway_queue_send_latency_seconds_sum %f\n"+
+			"gateway_queue_send_latency_seconds_count %d\n"+
+			"# TYPE gateway_queue_dropped_unsent_total counter\n%s",
 		snapshot.WSConnections,
 		snapshot.QueueDepth,
 		snapshot.QueueSentTotal,
 		snapshot.QueueRejectedTotal,
 		snapshot.QueueDroppedTotal,
 		snapshot.EventsBroadcastTotal,
+		formatLatencyBuckets(snapshot.QueueSendLatency),
+		snapshot.QueueSendLatency.Sum,
+		snapshot.QueueSendLatency.Count,
+		formatDroppedBySession(snapshot.DroppedBySession),
 	)
+}
+
+func formatLatencyBuckets(hist gateway.HistogramSnapshot) string {
+	var b strings.Builder
+	for _, bucket := range hist.Buckets {
+		_, _ = fmt.Fprintf(&b, "gateway_queue_send_latency_seconds_bucket{le=%q} %d\n", bucket.Le, bucket.Count)
+	}
+	_, _ = fmt.Fprintf(&b, "gateway_queue_send_latency_seconds_bucket{le=%q} %d\n", "+Inf", hist.Count)
+	return b.String()
+}
+
+func formatDroppedBySession(perSession map[string]int64) string {
+	if len(perSession) == 0 {
+		return ""
+	}
+
+	sessionIDs := make([]string, 0, len(perSession))
+	for sessionID := range perSession {
+		sessionIDs = append(sessionIDs, sessionID)
+	}
+	sort.Strings(sessionIDs)
+
+	var b strings.Builder
+	for _, sessionID := range sessionIDs {
+		_, _ = fmt.Fprintf(&b, "gateway_queue_dropped_unsent_total{session_id=%q} %s\n", sessionID, strconv.FormatInt(perSession[sessionID], 10))
+	}
+	return b.String()
 }
 
 func toSessionStatusPayload(status gateway.Status) sessionStatusPayload {

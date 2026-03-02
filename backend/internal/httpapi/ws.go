@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/athanasius/arda-web-gateway/backend/internal/gateway"
 )
@@ -44,27 +43,10 @@ func (r *Router) handleTerminalWS(w http.ResponseWriter, req *http.Request) {
 	}
 
 	client := r.manager.Hub().Add(netConn)
-	status := r.manager.Status()
-	r.manager.Broadcast(gateway.TerminalEvent{
-		Event:      "session.connected",
-		SessionID:  status.SessionID,
-		Text:       "websocket client connected",
-		QueueDepth: status.QueueDepth,
-		QueueMax:   status.QueueMax,
-		Timestamp:  nowRFC3339Nano(),
-	})
+	r.manager.Hub().Broadcast(r.manager.BuildStatusEvent())
 
 	defer func() {
 		r.manager.Hub().Remove(client)
-		latest := r.manager.Status()
-		r.manager.Broadcast(gateway.TerminalEvent{
-			Event:      "session.disconnected",
-			SessionID:  latest.SessionID,
-			Text:       "websocket client disconnected",
-			QueueDepth: latest.QueueDepth,
-			QueueMax:   latest.QueueMax,
-			Timestamp:  nowRFC3339Nano(),
-		})
 	}()
 
 	r.manager.Hub().ReadLoop(client)
@@ -92,8 +74,4 @@ func headerContainsToken(header http.Header, key, want string) bool {
 		}
 	}
 	return false
-}
-
-func nowRFC3339Nano() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
 }

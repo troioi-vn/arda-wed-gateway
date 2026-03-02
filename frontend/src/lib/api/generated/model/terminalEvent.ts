@@ -6,13 +6,14 @@
 
  * OpenAPI spec version: 0.1.0
  */
-import type { TerminalEventEvent } from './terminalEventEvent';
+import type { TerminalSessionStatusEvent } from './terminalSessionStatusEvent';
+import type { TerminalSessionConnectedEvent } from './terminalSessionConnectedEvent';
+import type { TerminalSessionDisconnectedEvent } from './terminalSessionDisconnectedEvent';
+import type { TerminalOutputEvent } from './terminalOutputEvent';
+import type { QueueAcceptedEvent } from './queueAcceptedEvent';
+import type { QueueRejectedEvent } from './queueRejectedEvent';
 
-export interface TerminalEvent {
-  event: TerminalEventEvent;
-  session_id: string;
-  text?: string;
-  queue_depth?: number;
-  queue_max?: number;
-  timestamp: string;
-}
+/**
+ * Runtime WebSocket event envelope for terminal stream updates.
+ */
+export type TerminalEvent = TerminalSessionStatusEvent | TerminalSessionConnectedEvent | TerminalSessionDisconnectedEvent | TerminalOutputEvent | QueueAcceptedEvent | QueueRejectedEvent;

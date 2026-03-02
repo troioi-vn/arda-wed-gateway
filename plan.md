@@ -46,6 +46,8 @@ Planning style: iterative, high-detail, capability-based milestones
 26. Repository scaffolding is standardized: `backend/`, `frontend/`, `api/openapi/`, `plan/`, `infra/docker/`, `scripts/`.
 27. Golden fixture file tree is created up front under `backend/testdata/parser/` and expanded continuously as transcripts are captured.
 28. Developer workflow is normalized around `Makefile` task entrypoints for run/test/generate/compose.
+29. WebSocket runtime contract now includes explicit `session.status` bootstrap event for frontend hydration.
+30. Metrics baseline now includes queue send latency histogram and dropped-unsent per-session counter labels.
 
 ---
 
@@ -274,7 +276,8 @@ Acceptance:
    - Apply deterministic truncation so behavior is repeatable and debuggable.
 4. **Observability baseline**
    - Structured logs with session identifiers.
-   - Basic metrics endpoint for queue length, send latency, parse failures, and LLM call timing.
+   - Basic metrics endpoint for queue length, send latency histogram, parse failures, and LLM call timing.
+   - Track dropped-unsent commands with per-session labels for disconnect diagnosis.
 5. **Delivery workflow**
    - Run backend/frontend locally for fast iteration.
    - Keep Docker Compose configuration continuously in sync (no long-lived drift).
@@ -322,6 +325,7 @@ Acceptance:
    - On upstream disconnect, immediately stop sender loop and mark queued commands unsent.
    - Do not auto-replay unsent commands after reconnect in MVP.
    - Surface reconnection + dropped-unsent count in status and logs.
+   - Emit `session.status` on WS subscribe so frontend can hydrate current queue/session state without waiting for a transition event.
 
 ---
 

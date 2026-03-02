@@ -27,7 +27,7 @@ export type HTTPStatusCode5xx = 500 | 501 | 502 | 503 | 504 | 505 | 507 | 511;
 export type HTTPStatusCodes = HTTPStatusCode1xx | HTTPStatusCode2xx | HTTPStatusCode3xx | HTTPStatusCode4xx | HTTPStatusCode5xx;
 
 /**
- * Performs HTTP Upgrade to WebSocket. Runtime events carry session lifecycle and terminal output payloads using schemas under `components.schemas`.
+ * Performs HTTP Upgrade to WebSocket. Runtime events carry session lifecycle and terminal output payloads using schemas under `components.schemas`. First message after connect is `session.status` so the frontend can hydrate queue/session metadata.
 
  * @summary Upgrade to terminal WebSocket stream
  */

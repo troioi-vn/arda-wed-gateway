@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,15 +15,20 @@ import (
 var (
 	ErrSessionAlreadyConnected = errors.New("session already connected")
 	ErrSessionNotConnected     = errors.New("session not connected")
+	ErrUpstreamUnavailable     = errors.New("upstream unavailable")
 )
 
+type DialFunc func(context.Context, string, string) (net.Conn, error)
+
 type TerminalEvent struct {
-	Event      string `json:"event"`
-	SessionID  string `json:"session_id"`
-	Text       string `json:"text,omitempty"`
-	QueueDepth int    `json:"queue_depth,omitempty"`
-	QueueMax   int    `json:"queue_max,omitempty"`
-	Timestamp  string `json:"timestamp"`
+	Event           string `json:"event"`
+	SessionID       string `json:"session_id"`
+	Connected       bool   `json:"connected,omitempty"`
+	Text            string `json:"text,omitempty"`
+	QueueDepth      int    `json:"queue_depth,omitempty"`
+	QueueMax        int    `json:"queue_max,omitempty"`
+	QueueRejectCode string `json:"queue_reject_code,omitempty"`
+	Timestamp       string `json:"timestamp"`
 }
 
 type Status struct {
@@ -40,6 +47,7 @@ type Manager struct {
 
 	queueInterval time.Duration
 	queueMaxDepth int
+	dial          DialFunc
 
 	session    *session
 	sessionSeq atomic.Uint64
@@ -47,17 +55,26 @@ type Manager struct {
 
 type session struct {
 	id           string
+	host         string
+	port         int
 	connected    bool
 	lastActivity time.Time
+	conn         net.Conn
 	queue        *CommandQueue
 }
 
-func NewManager(queueInterval time.Duration, queueMaxDepth int, logger *slog.Logger, metrics *Metrics) *Manager {
+func NewManager(queueInterval time.Duration, queueMaxDepth int, logger *slog.Logger, metrics *Metrics, dial DialFunc) *Manager {
+	if dial == nil {
+		dialer := &net.Dialer{Timeout: 8 * time.Second}
+		dial = dialer.DialContext
+	}
+
 	m := &Manager{
 		logger:        logger,
 		metrics:       metrics,
 		queueInterval: queueInterval,
 		queueMaxDepth: queueMaxDepth,
+		dial:          dial,
 	}
 	m.hub = NewHub(logger, metrics)
 	return m
@@ -68,14 +85,23 @@ func (m *Manager) Hub() *Hub {
 }
 
 func (m *Manager) Connect(host string, port int) (Status, error) {
+	address := fmt.Sprintf("%s:%d", host, port)
+	conn, err := m.dial(context.Background(), "tcp", address)
+	if err != nil {
+		return Status{}, fmt.Errorf("%w: %v", ErrUpstreamUnavailable, err)
+	}
+
 	m.mu.Lock()
 	s := m.ensureSessionLocked()
 	if s.connected {
-		status := m.statusLocked()
 		m.mu.Unlock()
-		return status, ErrSessionAlreadyConnected
+		_ = conn.Close()
+		return m.statusLocked(), ErrSessionAlreadyConnected
 	}
 
+	s.host = host
+	s.port = port
+	s.conn = conn
 	s.connected = true
 	s.lastActivity = time.Now().UTC()
 	s.queue.Start()
@@ -86,39 +112,19 @@ func (m *Manager) Connect(host string, port int) (Status, error) {
 	m.Broadcast(TerminalEvent{
 		Event:      "session.connected",
 		SessionID:  status.SessionID,
+		Connected:  true,
 		Text:       fmt.Sprintf("connected to %s:%d", host, port),
 		QueueDepth: status.QueueDepth,
 		QueueMax:   status.QueueMax,
 		Timestamp:  nowRFC3339Nano(),
 	})
+
+	go m.readUpstream(status.SessionID, conn)
 	return status, nil
 }
 
 func (m *Manager) Disconnect() (Status, int, error) {
-	m.mu.Lock()
-	s := m.ensureSessionLocked()
-	if !s.connected {
-		status := m.statusLocked()
-		m.mu.Unlock()
-		return status, 0, ErrSessionNotConnected
-	}
-
-	dropped := s.queue.StopAndDrop()
-	s.connected = false
-	s.lastActivity = time.Now().UTC()
-	status := m.statusLocked()
-	m.mu.Unlock()
-
-	m.logger.Info("session disconnected", "session_id", status.SessionID, "dropped_unsent", dropped)
-	m.Broadcast(TerminalEvent{
-		Event:      "session.disconnected",
-		SessionID:  status.SessionID,
-		Text:       fmt.Sprintf("session disconnected, dropped_unsent=%d", dropped),
-		QueueDepth: status.QueueDepth,
-		QueueMax:   status.QueueMax,
-		Timestamp:  nowRFC3339Nano(),
-	})
-	return status, dropped, nil
+	return m.disconnect("", "manual disconnect", true)
 }
 
 func (m *Manager) Status() Status {
@@ -143,12 +149,13 @@ func (m *Manager) Enqueue(command string) (Status, error) {
 		m.mu.Unlock()
 		if errors.Is(err, ErrQueueFull) {
 			m.Broadcast(TerminalEvent{
-				Event:      "queue.rejected",
-				SessionID:  status.SessionID,
-				Text:       "command rejected: queue full",
-				QueueDepth: depth,
-				QueueMax:   s.queue.MaxDepth(),
-				Timestamp:  nowRFC3339Nano(),
+				Event:           "queue.rejected",
+				SessionID:       status.SessionID,
+				Text:            "command rejected: queue full",
+				QueueDepth:      depth,
+				QueueMax:        s.queue.MaxDepth(),
+				QueueRejectCode: "QUEUE_FULL",
+				Timestamp:       nowRFC3339Nano(),
 			})
 		}
 		return status, err
@@ -164,7 +171,7 @@ func (m *Manager) Enqueue(command string) (Status, error) {
 		SessionID:  status.SessionID,
 		Text:       command,
 		QueueDepth: depth,
-		QueueMax:   s.queue.MaxDepth(),
+		QueueMax:   status.QueueMax,
 		Timestamp:  nowRFC3339Nano(),
 	})
 	return status, nil
@@ -182,17 +189,73 @@ func (m *Manager) ensureSessionLocked() *session {
 		lastActivity: time.Now().UTC(),
 	}
 
-	s.queue = NewCommandQueue(m.queueMaxDepth, m.queueInterval, func(ctx context.Context, command string) error {
+	s.queue = NewCommandQueue(sessionID, m.queueMaxDepth, m.queueInterval, func(ctx context.Context, command string) error {
 		_ = ctx
-		m.onCommandSent(sessionID, command)
-		return nil
+		return m.writeCommand(sessionID, command)
 	}, m.logger.With("session_id", sessionID), m.metrics)
 
 	m.session = s
 	return s
 }
 
-func (m *Manager) onCommandSent(sessionID, command string) {
+func (m *Manager) writeCommand(sessionID, command string) error {
+	m.mu.RLock()
+	if m.session == nil || m.session.id != sessionID || !m.session.connected || m.session.conn == nil {
+		m.mu.RUnlock()
+		return ErrSessionNotConnected
+	}
+	conn := m.session.conn
+	m.mu.RUnlock()
+
+	if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(conn, command+"\n"); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	if m.session != nil && m.session.id == sessionID {
+		m.session.lastActivity = time.Now().UTC()
+	}
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) readUpstream(sessionID string, conn net.Conn) {
+	filter := &TelnetFilter{}
+	decoder := NewTextDecoder()
+	buffer := make([]byte, 4096)
+
+	for {
+		if err := conn.SetReadDeadline(time.Now().Add(120 * time.Second)); err != nil {
+			m.handleUpstreamDisconnect(sessionID, fmt.Errorf("set read deadline failed: %w", err))
+			return
+		}
+
+		n, err := conn.Read(buffer)
+		if n > 0 {
+			payload := filter.Filter(buffer[:n])
+			if len(payload) > 0 {
+				text := decoder.Decode(payload)
+				m.onTerminalOutput(sessionID, text)
+			}
+		}
+
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				continue
+			}
+			m.handleUpstreamDisconnect(sessionID, err)
+			return
+		}
+	}
+}
+
+func (m *Manager) onTerminalOutput(sessionID, text string) {
 	m.mu.Lock()
 	if m.session != nil && m.session.id == sessionID {
 		m.session.lastActivity = time.Now().UTC()
@@ -202,9 +265,73 @@ func (m *Manager) onCommandSent(sessionID, command string) {
 	m.Broadcast(TerminalEvent{
 		Event:     "terminal.output",
 		SessionID: sessionID,
-		Text:      "> " + command,
+		Text:      text,
 		Timestamp: nowRFC3339Nano(),
 	})
+}
+
+func (m *Manager) handleUpstreamDisconnect(sessionID string, err error) {
+	reason := "upstream disconnected"
+	if err != nil && !errors.Is(err, io.EOF) {
+		reason = fmt.Sprintf("upstream disconnected: %v", err)
+	}
+	_, _, _ = m.disconnect(sessionID, reason, false)
+}
+
+func (m *Manager) disconnect(expectedSessionID, reason string, failIfNotConnected bool) (Status, int, error) {
+	m.mu.Lock()
+	s := m.ensureSessionLocked()
+	if !s.connected {
+		status := m.statusLocked()
+		m.mu.Unlock()
+		if failIfNotConnected {
+			return status, 0, ErrSessionNotConnected
+		}
+		return status, 0, nil
+	}
+	if expectedSessionID != "" && s.id != expectedSessionID {
+		status := m.statusLocked()
+		m.mu.Unlock()
+		return status, 0, nil
+	}
+
+	conn := s.conn
+	s.conn = nil
+	s.connected = false
+	s.lastActivity = time.Now().UTC()
+	queue := s.queue
+	status := m.statusLocked()
+	m.mu.Unlock()
+
+	if conn != nil {
+		_ = conn.Close()
+	}
+	dropped := queue.StopAndDrop()
+	status.QueueDepth = 0
+
+	m.logger.Info("session disconnected", "session_id", status.SessionID, "reason", reason, "dropped_unsent", dropped)
+	m.Broadcast(TerminalEvent{
+		Event:      "session.disconnected",
+		SessionID:  status.SessionID,
+		Connected:  false,
+		Text:       fmt.Sprintf("%s, dropped_unsent=%d", reason, dropped),
+		QueueDepth: 0,
+		QueueMax:   status.QueueMax,
+		Timestamp:  nowRFC3339Nano(),
+	})
+	return status, dropped, nil
+}
+
+func (m *Manager) BuildStatusEvent() TerminalEvent {
+	status := m.Status()
+	return TerminalEvent{
+		Event:      "session.status",
+		SessionID:  status.SessionID,
+		Connected:  status.Connected,
+		QueueDepth: status.QueueDepth,
+		QueueMax:   status.QueueMax,
+		Timestamp:  nowRFC3339Nano(),
+	}
 }
 
 func (m *Manager) Broadcast(event TerminalEvent) {
