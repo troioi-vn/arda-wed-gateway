@@ -20,11 +20,13 @@ Outcome:
 - Orval generation workflow is documented.
 - MVP operational defaults are explicit (queue policy, reconnect policy, suggestion freshness policy).
 - Telnet protocol handling constraints are explicit (negotiation filtering + prompt-without-newline behavior).
+- Implementation bootstrap scaffolding is in place (backend skeleton, frontend shell, Docker baseline, parser fixture tree).
 
 Exit criteria:
 - `plan.md` approved for MVP start.
 - `README.md` and this roadmap reflect current decisions.
 - Early spike is complete: short real upstream transcript captured and simulator fixture path defined.
+- Phase 0 setup commands are executable (`make run-backend`, `make test-backend`, `make api-generate`, `make docker-up` after dependency install).
 
 ## Phase 1 — Playable Gateway + Suggestions (MVP)
 Outcome:

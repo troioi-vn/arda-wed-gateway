@@ -12,6 +12,13 @@ Implementation is intentionally delayed until:
 - API contracts are defined.
 - Milestones and testing strategy are explicit.
 
+Phase 0 bootstrap is now completed to unblock implementation:
+- Backend service skeleton with `GET /api/v0/health`.
+- Frontend React/Vite scaffold with terminal-first placeholder layout.
+- OpenAPI v0 file and Orval configuration.
+- Docker Compose local parity baseline.
+- Parser fixture directory seeded for golden test corpus.
+
 ## Goals
 - Deliver an immersive terminal-first MUD web client.
 - Keep transport reliable (WebSocket <-> Telnet) under rapid user input.
@@ -45,6 +52,7 @@ Implementation is intentionally delayed until:
 - Detailed iterative planning: `plan.md`
 - High-level milestones and phase outcomes: `docs/roadmap.md`
 - Agent conventions and coding behavior: `AGENTS.md`
+- Phase task files for AI execution: `plan/plan-*.md`
 
 Consistency rule:
 - `plan.md` holds detailed operational defaults and task slicing.
@@ -78,3 +86,30 @@ Agent work in this repo should:
 - explain Go idioms and concurrency decisions,
 - avoid black-box edits,
 - highlight reusable “aha” patterns after coding tasks.
+
+## Toolchain Baseline
+- Go: `1.22.x`
+- Node.js: `22.x`
+- npm: `10.x` (bundled with Node 22)
+- Docker Engine + Docker Compose v2
+
+## Local Setup
+1. Copy environment defaults (already committed for bootstrap): `.env`
+2. Backend check:
+   - `cd backend && go test ./...`
+3. Frontend install:
+   - `cd frontend && npm install`
+4. Generate API client:
+   - `cd frontend && npm run api:generate`
+5. Run local stack:
+   - Backend: `make run-backend`
+   - Frontend: `make dev-frontend`
+   - Docker parity: `make docker-up`
+
+## Repository Layout (Bootstrap)
+- `backend/`: Go service and testdata fixtures.
+- `frontend/`: React/Vite UI shell + Orval generation config.
+- `api/openapi/`: OpenAPI source of truth (`gateway.v0.yaml`).
+- `plan/`: Phase-by-phase execution plans for AI agents.
+- `infra/docker/`: Docker orchestration notes and future overrides.
+- `scripts/`: bootstrap and automation helpers.

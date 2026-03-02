@@ -40,6 +40,13 @@ Planning style: iterative, high-detail, capability-based milestones
 22. Early spike is mandatory before full bridge hardening: capture real upstream transcript and build a Telnet simulator harness.
 23. Arda domain baseline is now explicit from `docs/arda.md` (prompt pattern, aura/status tags, equipment vocabulary, combat condition phrases).
 
+## Iteration 5 decisions
+24. Phase 0 bootstrap is mandatory before Milestone 1 feature coding.
+25. Toolchain baseline is pinned for onboarding consistency: Go 1.22.x, Node 22.x, Docker Compose v2.
+26. Repository scaffolding is standardized: `backend/`, `frontend/`, `api/openapi/`, `plan/`, `infra/docker/`, `scripts/`.
+27. Golden fixture file tree is created up front under `backend/testdata/parser/` and expanded continuously as transcripts are captured.
+28. Developer workflow is normalized around `Makefile` task entrypoints for run/test/generate/compose.
+
 ---
 
 ## 2) Product Goals (precise)
@@ -358,7 +365,7 @@ Questions to settle in Iteration 5:
 
 ## 10) Immediate Next Actions
 
-1. Create `api/openapi/gateway.v0.yaml` with the endpoint/schema set above.
-2. Add `frontend/orval.config.ts` and `npm run api:generate` script.
-3. Run an early spike: capture a short real upstream Telnet transcript and seed simulator fixtures.
-4. Implement M1-01 and M1-02 first, then proceed in task order.
+1. Run dependency install locally (`cd frontend && npm install`) and generate API client (`npm run api:generate`).
+2. Run an early spike: capture a short real upstream Telnet transcript and replace placeholder fixture seeds with real samples.
+3. Implement M1-01 through M1-04 first (backend skeleton through Telnet bridge baseline), then continue in task order.
+4. Keep docs synchronized each phase completion (`plan.md`, `docs/roadmap.md`, `README.md`).
