@@ -1,6 +1,6 @@
-# Arda Web Gateway — Project Plan (Iteration 3)
+# Arda Web Gateway — Project Plan (Iteration 4)
 
-Date: 2026-03-03
+Date: 2026-03-02
 Planning style: iterative, high-detail, capability-based milestones
 
 ## 1) Confirmed Direction (from discussion)
@@ -31,6 +31,15 @@ Planning style: iterative, high-detail, capability-based milestones
 15. Parser golden fixture baseline is defined for CP1251/ANSI and extraction edge cases.
 16. Milestone 1 is sliced into ordered implementation issues.
 
+## Iteration 4 decisions
+17. Telnet handling is explicit: support IAC negotiation filtering and record negotiation traces in fixtures.
+18. Prompt detection must handle non-newline-terminated prompts for responsive suggestions and UI updates.
+19. SQLite runtime defaults to WAL mode with controlled write serialization to avoid lock contention.
+20. Suggestion pipeline applies debounce + stale-response discard to avoid UI flicker and outdated actions.
+21. Queue reconnect policy is explicit for MVP: preserve in-memory queue only while connected; on disconnect, fail pending sends and require manual re-enqueue after reconnect.
+22. Early spike is mandatory before full bridge hardening: capture real upstream transcript and build a Telnet simulator harness.
+23. Arda domain baseline is now explicit from `docs/arda.md` (prompt pattern, aura/status tags, equipment vocabulary, combat condition phrases).
+
 ---
 
 ## 2) Product Goals (precise)
@@ -59,12 +68,17 @@ Deliver a stable web gateway that feels like a classic MUD client while safely a
 - Frontend connects through WebSocket.
 - Backend fan-out of MUD output to relevant frontend session.
 - Session lifecycle: connect, reconnect, close, and cleanup.
+- Telnet negotiation handling is explicit (`IAC`, `WILL/WONT`, `DO/DONT`, subnegotiation) with deterministic filtering.
+- Prompt/event detection must work for lines that do not terminate with `\n` (classic MUD prompt style).
 
 ## B. Text Processing + Parsing
 - ANSI stream handling.
 - CP1251 -> UTF-8 conversion.
 - SMAUG artifact correction pass.
 - Basic structured extraction (location, hp/mana/move, inventory snippets) to support LLM context.
+- Prompt parsing baseline: support `HP/MA/MV/EXP` style numeric prompt tuples (example family: `(hp/hp ma/ma mv/mv exp |)`).
+- Status token parsing baseline: recognize common Russian state prefixes like `(Белая Аура)`, `(СераЯ Аура)`, `(Красная Аура)`, `(В полете)`, `(Плавает)`, `(Светится)`, `(Волшебное)` without corrupting entity names.
+- Inventory/equipment parsing baseline: map known slot vocabulary (head/neck/body/fingers/arms/shoulders/legs/wrist/shield/wield/held) into normalized state fields.
 
 ## C. Command Queue + Safety
 - Buffer rapid inputs.
@@ -72,11 +86,15 @@ Deliver a stable web gateway that feels like a classic MUD client while safely a
 - Preserve order guarantees.
 - Provide queue visibility in logs/metrics.
 - Initial defaults (Iteration 2): 500ms interval, queue max 20, reject-new on overflow.
+- Reconnect semantics (Iteration 4): no automatic replay across reconnect boundaries in MVP.
 
 ## D. Suggestion Engine (Auto-Suggest only in MVP)
 - Trigger on new text updates.
+- Apply short debounce window before dispatching LLM calls to reduce churn during high-frequency output.
 - Build prompt from recent lines + parsed state + generated character/map context strings.
 - Prompt policy: wide context budget with deterministic truncation order when cap is reached.
+- If a newer prompt job supersedes an older one, discard stale response on arrival.
+- Add lightweight play-etiquette guardrails to prompt policy (avoid recommending obvious KS/loot-steal/spam behaviors unless user explicitly requests).
 - Require strict JSON contract:
   - `commands[]`
   - `reason`
@@ -85,6 +103,8 @@ Deliver a stable web gateway that feels like a classic MUD client while safely a
 
 ## E. State Store
 - SQLite-backed state updates from parser events.
+- Enable SQLite WAL mode and bounded busy-timeout defaults for concurrent read/write resilience.
+- Use a controlled write path (single writer worker or transactional queue) to avoid lock contention.
 - Generate `character.md` and `map.md` as in-memory strings for LLM calls.
 - Initial schema (Iteration 2): `rooms`, `exits`, `character_stats`, `inventory`, `events`.
 
@@ -142,10 +162,19 @@ WebSocket note:
 1. Decoder tests:
    - CP1251 conversion cases (including mixed ANSI/control bytes).
    - SMAUG artifact correction cases and non-regression samples.
+   - Telnet negotiation/control-sequence interleaving samples.
 2. Parser tests:
    - Location/status/inventory extraction from representative log lines.
+   - Prompt detection for non-newline-terminated prompt endings.
+   - HP/MA/MV/EXP prompt tuple variants.
+   - Aura/status token extraction and normalization for Russian tag prefixes.
+   - Equipment slot extraction variants (multi-line and reordered outputs).
 3. Queue tests:
    - Burst input (10 rapid commands), order preservation, and interval enforcement.
+   - Disconnect/reconnect semantics (no hidden replay in MVP).
+4. Suggestion contract tests:
+   - Malformed/partial JSON output is rejected safely.
+   - Stale response suppression when newer suggestion cycle exists.
 
 ## Integration Tests
 1. WebSocket channel behavior:
@@ -154,6 +183,7 @@ WebSocket note:
    - Input from WS client to Telnet writer path.
 2. Gateway flow smoke:
    - Simulated Telnet upstream + real WS client in test harness.
+   - Include negotiation, fragmented ANSI, and prompt-without-newline fixtures.
 
 ## Exit Criteria per Milestone
 - No failing tests in changed component area.
@@ -213,10 +243,18 @@ Acceptance:
    - Control: strict schema validation and safe fallback (drop invalid suggestions).
 4. **Autopilot runaway loops**
    - Control: bounded retries, state checks, explicit kill switch.
+5. **Telnet protocol quirks**
+   - Control: explicit IAC handling + recorded upstream traces + simulator-backed integration tests.
+6. **SQLite lock contention**
+   - Control: WAL mode + single writer path + timeout telemetry.
+7. **Domain parser drift (Arda text variants)**
+   - Control: extend golden fixtures with Arda-specific prompt, aura, combat, and equipment transcripts.
+8. **Unsafe social suggestions**
+   - Control: prompt-level etiquette constraints + command allow/deny validation before enqueue.
 
 ---
 
-## 7) Implementation Defaults (Iteration 2)
+## 7) Implementation Defaults (Iterations 2-4)
 
 1. **User/session model**
    - Build for single-player runtime first.
@@ -255,11 +293,32 @@ Acceptance:
      - smaug_ya_artifact_cases.txt
      - status_line_variants.txt
      - inventory_block_variants.txt
+     - telnet_iac_negotiation_trace.txt
+     - prompt_no_newline_variants.txt
+     - prompt_hp_ma_mv_exp_variants.txt
+     - aura_state_prefix_variants_ru.txt
+     - equipment_slots_variants_ru.txt
+     - combat_condition_phrases_ru.txt
    - Every parser/decoder change must pass fixture regression before merge.
+
+9. **Suggestion freshness policy (Iteration 4)**
+   - Debounce suggestion trigger by default (target 500ms-1000ms quiet window).
+   - Track monotonic suggestion job IDs; ignore responses that are not from latest active job.
+   - On provider timeout/error, keep previous valid suggestions visible and log failure reason.
+
+10. **SQLite concurrency policy (Iteration 4)**
+   - Enable WAL and set explicit busy timeout at DB init.
+   - Serialize writes through one controlled worker path.
+   - Reads may run concurrently, but must tolerate stale-by-one-event snapshot semantics.
+
+11. **MVP reconnect/queue policy (Iteration 4)**
+   - On upstream disconnect, immediately stop sender loop and mark queued commands unsent.
+   - Do not auto-replay unsent commands after reconnect in MVP.
+   - Surface reconnection + dropped-unsent count in status and logs.
 
 ---
 
-## 8) Milestone 1 Task Slicing (Iteration 3)
+## 8) Milestone 1 Task Slicing (Iteration 4)
 
 Ordered issue-level implementation plan:
 1. **M1-01: Backend skeleton + health endpoint**
@@ -269,13 +328,13 @@ Ordered issue-level implementation plan:
 3. **M1-03: Command queue core**
    - Buffered queue, 500ms sender loop, max size 20, reject-new behavior.
 4. **M1-04: Telnet bridge integration**
-   - TCP connect/read/write loop, session lifecycle wiring, reconnect-safe cleanup.
+   - TCP connect/read/write loop, IAC negotiation handling, prompt-without-newline detection, session lifecycle wiring, reconnect-safe cleanup.
 5. **M1-05: Decoder + artifact correction**
    - CP1251/ANSI conversion and SMAUG correction pass with golden fixtures.
 6. **M1-06: Parser state extraction + snapshot API**
-   - Parse key state fragments, persist minimal schema, expose `GET /state/snapshot`.
+   - Parse key state fragments (including HP/MA/MV/EXP prompt tuple + aura/state tags + equipment slots), persist minimal schema, expose `GET /state/snapshot`.
 7. **M1-07: Suggestion pipeline MVP**
-   - Text update trigger, prompt assembly, strict JSON parse, latest suggestion endpoint.
+   - Text update trigger with debounce, prompt assembly, strict JSON parse, stale-response discard, latest suggestion endpoint.
 8. **M1-08: Frontend terminal + queue UX + suggestions**
    - Terminal center panel, input history, queue-full UX, clickable suggestion actions.
 9. **M1-09: OpenAPI + Orval integration**
@@ -285,14 +344,15 @@ Ordered issue-level implementation plan:
 
 ---
 
-## 9) Iteration 4 Backlog (next planning round)
+## 9) Iteration 5 Backlog (next planning round)
 
-Questions to settle in Iteration 4:
+Questions to settle in Iteration 5:
 1. Authentication/session ownership model for future multi-user mode.
-2. Background LLM scheduler policy (interval, debounce, cancellation semantics).
+2. Background LLM scheduler policy beyond MVP autosuggest (shared budget across timers + events).
 3. Metrics schema and dashboard shortlist for live ops visibility.
 4. OpenAPI versioning and deprecation policy (`v0` -> `v1` transition).
 5. Release strategy (feature flags for suggestions/autopilot progression).
+6. Convert `docs/arda.md` into versioned parser dictionaries (prompt regex set, aura lexicon, equipment lexicon, combat phrase map) with explicit update workflow.
 
 ---
 
@@ -300,4 +360,5 @@ Questions to settle in Iteration 4:
 
 1. Create `api/openapi/gateway.v0.yaml` with the endpoint/schema set above.
 2. Add `frontend/orval.config.ts` and `npm run api:generate` script.
-3. Implement M1-01 and M1-02 first, then proceed in task order.
+3. Run an early spike: capture a short real upstream Telnet transcript and seed simulator fixtures.
+4. Implement M1-01 and M1-02 first, then proceed in task order.

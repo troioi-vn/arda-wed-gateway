@@ -28,14 +28,15 @@ Implementation is intentionally delayed until:
 - Frontend: React + Tailwind + shadcn/ui.
 - Backend: Go service managing Telnet session, parser pipeline, and AI orchestration.
 - Realtime transport: WebSocket between frontend and backend.
-- Upstream protocol: Telnet TCP to Arda MUD.
+- Upstream protocol: Telnet TCP to Arda MUD with explicit negotiation handling and prompt-without-newline support.
 - State store: SQLite for parsed state and event persistence.
+- SQLite runtime policy: WAL mode + controlled writes for predictable concurrency.
 - AI provider: OpenRouter with strict JSON decision contracts.
 - API contract: OpenAPI v0 as source of truth.
 - Client/docs generation: Orval from OpenAPI.
 
 ## AI Modes (Planned)
-1. Auto-Suggest Mode (MVP): context-aware action suggestions on new text updates.
+1. Auto-Suggest Mode (MVP): context-aware action suggestions on new text updates with debounce and stale-response suppression.
 2. Background LLM Mode: periodic state/map analysis without suggestion spam.
 3. Autopilot Mode: goal-driven execution loop with explicit safety boundaries.
 4. Macro System: replay successful command chains without extra LLM calls.
@@ -54,8 +55,13 @@ Consistency rule:
 ## Testing Strategy (Current)
 - Balanced approach:
   - Unit tests for decoder/parser/queue behavior.
-  - Integration tests for WebSocket gateway flow.
-  - Golden parser fixtures for CP1251/ANSI edge cases.
+  - Integration tests for WebSocket gateway flow with simulated Telnet upstream.
+  - Golden parser fixtures for CP1251/ANSI/Telnet negotiation edge cases.
+
+## MVP Operational Defaults (Current)
+- Queue: 500ms send interval, max depth 20, reject new when full.
+- Reconnect policy: no automatic replay of unsent queued commands after reconnect.
+- Suggestion freshness: short debounce window and stale-response discard.
 
 ## Milestone Outline
 - M1: Playable Gateway + Suggestions.
