@@ -6,13 +6,13 @@
 
  * OpenAPI spec version: 0.1.0
  */
+import type { PromptTuplePayload } from './promptTuplePayload';
 import type { StateSnapshotPayloadEquipment } from './stateSnapshotPayloadEquipment';
 
 export interface StateSnapshotPayload {
   location?: string;
-  hp?: number;
-  mana?: number;
-  move?: number;
-  inventory?: string[];
+  prompt?: PromptTuplePayload;
+  status_tags?: string[];
   equipment?: StateSnapshotPayloadEquipment;
+  updated_at?: string;
 }

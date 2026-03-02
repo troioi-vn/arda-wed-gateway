@@ -1,2 +1,6 @@
 # fixture: prompt_hp_ma_mv_exp_variants.txt
-# seed with captured Arda transcript samples
+Вы стоите на мостовой.
+(802/802 619/619 304/304 11911196 |)
+
+Кто-то говорит: привет.
+(120/150 88/90 60/77 4512 |)

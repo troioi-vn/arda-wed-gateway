@@ -9,6 +9,7 @@ import (
 
 	"github.com/athanasius/arda-web-gateway/backend/internal/config"
 	"github.com/athanasius/arda-web-gateway/backend/internal/gateway"
+	"github.com/athanasius/arda-web-gateway/backend/internal/state"
 )
 
 type Router struct {
@@ -17,6 +18,7 @@ type Router struct {
 	counter uint64
 	manager *gateway.Manager
 	metrics *gateway.Metrics
+	state   *state.Service
 }
 
 func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
@@ -31,16 +33,23 @@ func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
 	}
 
 	metrics := gateway.NewMetrics()
+	stateService := state.NewService(cfg.SQLitePath, logger)
 	r := &Router{
 		cfg:     cfg,
 		logger:  logger,
 		metrics: metrics,
-		manager: gateway.NewManager(queueInterval, queueMaxDepth, logger, metrics, nil),
+		state:   stateService,
+		manager: gateway.NewManager(queueInterval, queueMaxDepth, logger, metrics, nil, func(sessionID, text string) {
+			if err := stateService.Ingest(sessionID, text); err != nil {
+				logger.Warn("state ingest failed", "session_id", sessionID, "error", err.Error())
+			}
+		}),
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v0/health", r.handleHealth)
 	mux.HandleFunc("GET /api/v0/session/status", r.handleSessionStatus)
+	mux.HandleFunc("GET /api/v0/state/snapshot", r.handleStateSnapshot)
 	mux.HandleFunc("POST /api/v0/session/connect", r.handleSessionConnect)
 	mux.HandleFunc("POST /api/v0/session/disconnect", r.handleSessionDisconnect)
 	mux.HandleFunc("POST /api/v0/commands/enqueue", r.handleEnqueueCommand)

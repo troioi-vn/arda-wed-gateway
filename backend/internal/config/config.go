@@ -17,6 +17,7 @@ type Config struct {
 	BuildCommit       string
 	QueueSendInterval time.Duration
 	QueueMaxDepth     int
+	SQLitePath        string
 }
 
 func Load() Config {
@@ -27,6 +28,7 @@ func Load() Config {
 		BuildCommit:       getenv("APP_BUILD_COMMIT", "local"),
 		QueueSendInterval: getenvDuration("APP_QUEUE_SEND_INTERVAL", 500*time.Millisecond),
 		QueueMaxDepth:     getenvInt("APP_QUEUE_MAX_DEPTH", 20),
+		SQLitePath:        getenv("APP_SQLITE_PATH", "tmp/gateway.sqlite"),
 	}
 }
 

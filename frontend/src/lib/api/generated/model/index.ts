@@ -16,6 +16,7 @@ export * from './errorEnvelopeResponse';
 export * from './errorResponse';
 export * from './healthPayload';
 export * from './meta';
+export * from './promptTuplePayload';
 export * from './queueAcceptedEvent';
 export * from './queueAcceptedEventEvent';
 export * from './queueRejectedEvent';

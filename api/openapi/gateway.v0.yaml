@@ -222,13 +222,9 @@ components:
       properties:
         location:
           type: string
-        hp:
-          type: integer
-        mana:
-          type: integer
-        move:
-          type: integer
-        inventory:
+        prompt:
+          $ref: "#/components/schemas/PromptTuplePayload"
+        status_tags:
           type: array
           items:
             type: string
@@ -236,6 +232,42 @@ components:
           type: object
           additionalProperties:
             type: string
+        updated_at:
+          type: string
+          format: date-time
+      example:
+        location: Таверна "Гарцующий пони"
+        prompt:
+          hp_current: 802
+          hp_max: 802
+          ma_current: 619
+          ma_max: 619
+          mv_current: 304
+          mv_max: 304
+          exp: 11911196
+        status_tags: ["Белая Аура", "В полете", "Светится"]
+        equipment:
+          head: рогатый шлем
+          wield: эльфийский клинок
+        updated_at: "2026-03-02T11:12:18.000000000Z"
+    PromptTuplePayload:
+      type: object
+      required: [hp_current, hp_max, ma_current, ma_max, mv_current, mv_max, exp]
+      properties:
+        hp_current:
+          type: integer
+        hp_max:
+          type: integer
+        ma_current:
+          type: integer
+        ma_max:
+          type: integer
+        mv_current:
+          type: integer
+        mv_max:
+          type: integer
+        exp:
+          type: integer
     EnqueueCommandRequest:
       type: object
       required: [command]

@@ -48,6 +48,7 @@ type Manager struct {
 	queueInterval time.Duration
 	queueMaxDepth int
 	dial          DialFunc
+	onTerminal    func(sessionID, text string)
 
 	session    *session
 	sessionSeq atomic.Uint64
@@ -63,7 +64,7 @@ type session struct {
 	queue        *CommandQueue
 }
 
-func NewManager(queueInterval time.Duration, queueMaxDepth int, logger *slog.Logger, metrics *Metrics, dial DialFunc) *Manager {
+func NewManager(queueInterval time.Duration, queueMaxDepth int, logger *slog.Logger, metrics *Metrics, dial DialFunc, onTerminal func(sessionID, text string)) *Manager {
 	if dial == nil {
 		dialer := &net.Dialer{Timeout: 8 * time.Second}
 		dial = dialer.DialContext
@@ -75,6 +76,7 @@ func NewManager(queueInterval time.Duration, queueMaxDepth int, logger *slog.Log
 		queueInterval: queueInterval,
 		queueMaxDepth: queueMaxDepth,
 		dial:          dial,
+		onTerminal:    onTerminal,
 	}
 	m.hub = NewHub(logger, metrics)
 	return m
@@ -256,6 +258,10 @@ func (m *Manager) readUpstream(sessionID string, conn net.Conn) {
 }
 
 func (m *Manager) onTerminalOutput(sessionID, text string) {
+	if m.onTerminal != nil {
+		m.onTerminal(sessionID, text)
+	}
+
 	m.mu.Lock()
 	if m.session != nil && m.session.id == sessionID {
 		m.session.lastActivity = time.Now().UTC()

@@ -1,2 +1,8 @@
 # fixture: equipment_slots_variants_ru.txt
-# seed with captured Arda transcript samples
+Голова: рогатый шлем
+Шея: амулет следопыта
+Тело: кольчуга странника
+Плечи: плащ рейнджера
+Оружие: эльфийский клинок
+Щит: круглый щит
+Держит: гномская лампа

@@ -1,2 +1,3 @@
 # fixture: aura_state_prefix_variants_ru.txt
-# seed with captured Arda transcript samples
+(Белая Аура) (В полете) (Светится) Атанасиус стоит здесь.
+Обычная строка без статусов.

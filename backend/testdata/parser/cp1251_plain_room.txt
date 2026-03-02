@@ -1,2 +1,4 @@
 # fixture: cp1251_plain_room.txt
-# seed with captured Arda transcript samples
+Таверна "Гарцующий пони"
+Теплый зал с деревянными столами и лавками.
+Выходы: север восток
