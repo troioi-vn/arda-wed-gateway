@@ -204,7 +204,7 @@ components:
           format: date-time
     SuggestionPayload:
       type: object
-      required: [commands, reason, expected_outcome]
+      required: [commands, reason, expected_outcome, generated_at]
       properties:
         commands:
           type: array

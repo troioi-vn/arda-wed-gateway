@@ -11,5 +11,5 @@ export interface SuggestionPayload {
   commands: string[];
   reason: string;
   expected_outcome: string;
-  generated_at?: string;
+  generated_at: string;
 }
