@@ -19,11 +19,12 @@ Phase 0 bootstrap is now completed to unblock implementation:
 - Docker Compose local parity baseline.
 - Parser fixture directory seeded for golden test corpus.
 
-Milestone 1 progress in-flight:
+Milestone 1 progress:
 - M1-02/M1-03 shipped: WS baseline + command queue/rate limiting with tests.
 - M1-04 baseline shipped: real Telnet TCP bridge (upstream read/write loop) with disconnect drop semantics.
 - M1-08 baseline shipped: frontend wired to `/api/v0/ws/terminal` with queue metadata and `QUEUE_FULL` inline + toast UX.
 - M1-09 shipped (2026-03-05): OpenAPI v0 now matches backend session/state/suggestions envelopes and frontend HTTP usage is Orval-generated.
+- M1-10 shipped (2026-03-05): integration hardening completed (queue burst pacing/reject tests, reconnect no-replay checks, fixture-backed snapshot regression, full backend/frontend test gate pass).
 - M1-15 groundwork shipped: metrics include send-latency histogram and dropped-unsent counters per session.
 
 ## Goals

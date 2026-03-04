@@ -353,14 +353,17 @@ Ordered issue-level implementation plan:
    - Confirmed frontend HTTP API calls use generated Orval client (WebSocket remains direct runtime transport).
    - Regenerated frontend API client via `npm run api:generate`.
    - Added backend contract sanity tests for session/state/suggestions surfaces.
-10. **M1-10: Integration test pass + MVP hardening**
-    - WS flow smoke, queue burst test, fixture regression, release checklist.
+10. **M1-10: Integration test pass + MVP hardening** *(completed 2026-03-05)*
+    - Added WS flow hardening coverage for queue burst pacing/rejection and reconnect no-replay semantics.
+    - Added fixture-driven state snapshot regression checks for location/prompt/status/equipment/updated_at fields.
+    - Passed full quality gate: `cd backend && go test ./...` and `cd frontend && npm test`.
+    - Confirmed MVP operational defaults: queue interval/depth, reconnect drop policy, suggestion freshness debounce/stale-drop behavior.
 
 ---
 
-## 9) Iteration 5 Backlog (next planning round)
+## 9) Iteration 5 Planning Focus (next round)
 
-Questions to settle in Iteration 5:
+Planning items to settle before M2 implementation:
 1. Authentication/session ownership model for future multi-user mode.
 2. Background LLM scheduler policy beyond MVP autosuggest (shared budget across timers + events).
 3. Metrics schema and dashboard shortlist for live ops visibility.
@@ -368,11 +371,17 @@ Questions to settle in Iteration 5:
 5. Release strategy (feature flags for suggestions/autopilot progression).
 6. Convert `docs/arda.md` into versioned parser dictionaries (prompt regex set, aura lexicon, equipment lexicon, combat phrase map) with explicit update workflow.
 
+Iteration 5 planning outputs:
+1. M2 task slicing with explicit goals/non-goals and acceptance criteria per task.
+2. Operational defaults for background LLM mode (trigger cadence, queue policy, staleness policy, failure fallback).
+3. Test strategy for each M2 capability (unit, integration, and fixture/golden coverage).
+4. Risks + mitigations and rollout controls (feature flags, observability gates).
+
 ---
 
 ## 10) Immediate Next Actions
 
-1. Run dependency install locally (`cd frontend && npm install`) and generate API client (`npm run api:generate`).
-2. Run an early spike: capture a short real upstream Telnet transcript and replace placeholder fixture seeds with real samples.
-3. Implement M1-01 through M1-04 first (backend skeleton through Telnet bridge baseline), then continue in task order.
-4. Keep docs synchronized each phase completion (`plan.md`, `docs/roadmap.md`, `README.md`).
+1. Keep docs synchronized for M1-10 completion (`plan.md`, `docs/roadmap.md`, `README.md`).
+2. Convert Iteration 5 planning focus items into concrete M2 task slicing with acceptance criteria and test strategy.
+3. Define OpenAPI impacts for M2 surfaces before implementation (`v0` additions vs `v1` transition strategy).
+4. Finalize operational defaults for background LLM mode and release/feature-flag policy.
