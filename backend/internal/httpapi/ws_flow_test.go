@@ -115,6 +115,60 @@ func TestWebSocketGatewayFlowSmoke(t *testing.T) {
 	_ = readUntilEvent(t, conn, "session.disconnected", 2*time.Second)
 }
 
+func TestWebSocketGatewayAcceptsBlankEnterCommand(t *testing.T) {
+	t.Parallel()
+
+	upstream := newFakeUpstream(t)
+	defer upstream.Close()
+
+	handler := NewRouter(config.Config{
+		Host:              "127.0.0.1",
+		Port:              "8080",
+		BuildVersion:      "test",
+		BuildCommit:       "abc123",
+		QueueSendInterval: 10 * time.Millisecond,
+		QueueMaxDepth:     20,
+	}, slog.Default())
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen tcp4: %v", err)
+	}
+	server := &http.Server{Handler: handler}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Close()
+
+	baseURL := "http://" + listener.Addr().String()
+
+	conn := dialWebSocket(t, baseURL, "/api/v0/ws/terminal")
+	defer conn.Close()
+	_ = readEvent(t, conn)
+
+	status := postJSON(t, baseURL+"/api/v0/session/connect", map[string]any{
+		"host": "127.0.0.1",
+		"port": upstream.Port(),
+	})
+	if status != http.StatusOK {
+		t.Fatalf("connect status: expected 200, got %d", status)
+	}
+	_ = readUntilEvent(t, conn, "session.connected", 2*time.Second)
+
+	status = postJSON(t, baseURL+"/api/v0/commands/enqueue", map[string]any{
+		"command": "",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("enqueue status for blank command: expected 200, got %d", status)
+	}
+	_ = readUntilEvent(t, conn, "queue.accepted", 2*time.Second)
+
+	gotCommand := upstream.WaitCommand(t, 2*time.Second)
+	if gotCommand != "" {
+		t.Fatalf("expected blank upstream command, got %q", gotCommand)
+	}
+}
+
 func TestWebSocketGatewayDecodesCP1251Output(t *testing.T) {
 	t.Parallel()
 
@@ -170,6 +224,59 @@ func TestWebSocketGatewayDecodesCP1251Output(t *testing.T) {
 	status = postJSON(t, baseURL+"/api/v0/session/disconnect", map[string]any{})
 	if status != http.StatusOK {
 		t.Fatalf("disconnect status: expected 200, got %d", status)
+	}
+}
+
+func TestWebSocketGatewayEncodesCP1251Input(t *testing.T) {
+	t.Parallel()
+
+	upstream := newFakeUpstream(t)
+	defer upstream.Close()
+
+	handler := NewRouter(config.Config{
+		Host:              "127.0.0.1",
+		Port:              "8080",
+		BuildVersion:      "test",
+		BuildCommit:       "abc123",
+		QueueSendInterval: 10 * time.Millisecond,
+		QueueMaxDepth:     20,
+	}, slog.Default())
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen tcp4: %v", err)
+	}
+	server := &http.Server{Handler: handler}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Close()
+
+	baseURL := "http://" + listener.Addr().String()
+	conn := dialWebSocket(t, baseURL, "/api/v0/ws/terminal")
+	defer conn.Close()
+	_ = readEvent(t, conn)
+
+	status := postJSON(t, baseURL+"/api/v0/session/connect", map[string]any{
+		"host": "127.0.0.1",
+		"port": upstream.Port(),
+	})
+	if status != http.StatusOK {
+		t.Fatalf("connect status: expected 200, got %d", status)
+	}
+	_ = readUntilEvent(t, conn, "session.connected", 2*time.Second)
+
+	status = postJSON(t, baseURL+"/api/v0/commands/enqueue", map[string]any{
+		"command": "справка",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("enqueue status: expected 200, got %d", status)
+	}
+	_ = readUntilEvent(t, conn, "queue.accepted", 2*time.Second)
+
+	gotCommand := upstream.WaitCommand(t, 2*time.Second)
+	if gotCommand != "справка" {
+		t.Fatalf("expected cp1251-encoded upstream command, got %q", gotCommand)
 	}
 }
 
@@ -524,7 +631,12 @@ func (f *fakeUpstream) handleConn(conn net.Conn) {
 			return
 		}
 
-		command := strings.TrimSpace(line)
+		decodedLine, err := charmap.Windows1251.NewDecoder().Bytes([]byte(line))
+		if err != nil {
+			decodedLine = []byte(line)
+		}
+
+		command := strings.TrimSpace(string(decodedLine))
 		f.commands <- upstreamCommand{command: command, at: time.Now()}
 
 		response := f.responseForCommand(command)

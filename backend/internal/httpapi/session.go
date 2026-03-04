@@ -109,12 +109,6 @@ func (r *Router) handleEnqueueCommand(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	payload.Command = strings.TrimSpace(payload.Command)
-	if payload.Command == "" {
-		writeError(w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "command is required", nil)
-		return
-	}
-
 	status, err := r.manager.Enqueue(payload.Command)
 	if err != nil {
 		switch {

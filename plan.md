@@ -219,10 +219,14 @@ Deliverables:
 - Parser-to-SQLite pipeline hardened.
 - In-memory character/map context generation.
 - Background LLM timer mode (non-spammy UI updates).
+- Explicit resync flow for parser/state drift recovery (manual and policy-driven `look`/`score` refresh trigger with cooldown/guardrails).
+- Frontend terminal saturation controls for high-volume WS output (bounded in-memory line buffer and render-throttle policy with optional virtualization threshold).
 
 Acceptance:
 - State is persisted and recovered between sessions.
 - Background analysis updates state/context without cluttering main UX.
+- Drift recovery is operator-visible and deterministic (resync attempts/status are observable; stale state can be recovered without reconnect).
+- Sustained high-throughput output does not freeze terminal UX (measured frame/input responsiveness remains within defined limits under burst fixtures).
 
 ## Milestone 3 — Autopilot (Safety-First)
 Deliverables:
@@ -236,9 +240,11 @@ Acceptance:
 ## Milestone 4 — Macro System
 Deliverables:
 - Save/replay successful command chains from suggestions/autopilot output.
+- Macro precondition validation gate (start-state compatibility checks before execution, with explicit reject reasons).
 
 Acceptance:
 - User can execute stored macro sequences without new LLM call.
+- Macro execution is blocked when current state mismatches required start-state safety constraints.
 
 ---
 
@@ -260,6 +266,12 @@ Acceptance:
    - Control: extend golden fixtures with Arda-specific prompt, aura, combat, and equipment transcripts.
 8. **Unsafe social suggestions**
    - Control: prompt-level etiquette constraints + command allow/deny validation before enqueue.
+9. **State drift between parser snapshot and live game**
+   - Control: explicit resync workflow, drift indicators, and fixture/integration tests for desync recovery behavior.
+10. **Frontend terminal saturation during high-volume upstream output**
+   - Control: bounded terminal buffer, render throttling, and stress tests with burst transcript playback.
+11. **Unsafe macro replay from invalid start context**
+   - Control: pre-execution macro state guard + clear reject telemetry and UI messaging.
 
 ---
 
@@ -374,7 +386,7 @@ Planning items to settle before M2 implementation:
 Iteration 5 planning outputs:
 1. M2 task slicing with explicit goals/non-goals and acceptance criteria per task.
 2. Operational defaults for background LLM mode (trigger cadence, queue policy, staleness policy, failure fallback).
-3. Test strategy for each M2 capability (unit, integration, and fixture/golden coverage).
+3. Test strategy for each M2 capability (unit, integration, and fixture/golden coverage), including drift-resync and WS burst saturation scenarios.
 4. Risks + mitigations and rollout controls (feature flags, observability gates).
 
 ---

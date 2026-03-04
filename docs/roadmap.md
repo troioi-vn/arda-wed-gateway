@@ -51,10 +51,14 @@ Outcome:
 - Parser-to-SQLite state pipeline stabilized.
 - In-memory context generation (`character.md`, `map.md` strings) in use.
 - Background LLM Mode updates analysis without UI spam.
+- Drift recovery path exists to re-sync parser/state with live MUD context without requiring reconnect.
+- Terminal rendering remains responsive under high-volume WebSocket output bursts.
 
 Exit criteria:
 - State snapshot APIs are reliable.
 - Background processing does not degrade terminal responsiveness.
+- Resync behavior is observable and repeatable (clear trigger policy and status visibility).
+- Burst-output stress checks pass with no terminal lock-up.
 
 ## Phase 3 — Autopilot (Safety-First)
 Outcome:
@@ -68,9 +72,11 @@ Exit criteria:
 Outcome:
 - Reusable command chains can be saved and replayed from UI.
 - Reduces redundant LLM calls for repeated play patterns.
+- Macro execution safety includes start-state compatibility checks before command replay.
 
 Exit criteria:
 - Macro creation and replay are predictable and transparent to user.
+- Macros are rejected safely with explicit feedback when start-state safety preconditions are not met.
 
 ## Cross-Cutting Streams
 - Observability: structured logs + core metrics from early stages (including queue send-latency histogram and dropped-unsent per-session counters).

@@ -27,6 +27,10 @@ Milestone 1 progress:
 - M1-10 shipped (2026-03-05): integration hardening completed (queue burst pacing/reject tests, reconnect no-replay checks, fixture-backed snapshot regression, full backend/frontend test gate pass).
 - M1-15 groundwork shipped: metrics include send-latency histogram and dropped-unsent counters per session.
 
+Upcoming planning focus (post-M1):
+- M2: explicit parser-state resync flow and terminal burst-output responsiveness safeguards.
+- M4: macro replay precondition checks so macros are rejected safely when start-state does not match.
+
 ## Goals
 - Deliver an immersive terminal-first MUD web client.
 - Keep transport reliable (WebSocket <-> Telnet) under rapid user input.

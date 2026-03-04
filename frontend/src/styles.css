@@ -8,13 +8,16 @@
   box-sizing: border-box;
 }
 
+html,
 body {
+  height: 100%;
   margin: 0;
-  min-height: 100vh;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 
 button,
@@ -25,10 +28,11 @@ input {
 .layout {
   display: grid;
   grid-template-columns: 1fr 320px;
-  grid-template-rows: 1fr 220px;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
   padding: 12px;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .terminal-pane,
@@ -38,6 +42,7 @@ input {
   border-radius: 12px;
   background: rgba(13, 10, 8, 0.9);
   box-shadow: 0 14px 30px rgba(0, 0, 0, 0.42);
+  min-height: 0;
 }
 
 .terminal-pane {
@@ -108,6 +113,7 @@ button:disabled {
 .map-pane {
   grid-column: 2 / 3;
   grid-row: 1 / 2;
+  overflow: auto;
 }
 
 .panel-body {
@@ -135,12 +141,32 @@ button:disabled {
 .suggestion-pane {
   grid-column: 1 / 3;
   grid-row: 2 / 3;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 40vh;
+}
+
+.suggestion-pane.collapsed {
+  max-height: none;
+}
+
+.pane-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-toggle {
+  padding: 4px 10px;
+  font-size: 0.82rem;
 }
 
 .queue-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: auto;
 }
 
 .inline-status {
@@ -207,7 +233,7 @@ button:disabled {
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(380px, 1fr) auto auto;
+    grid-template-rows: minmax(0, 1fr) auto auto;
   }
 
   .terminal-pane,

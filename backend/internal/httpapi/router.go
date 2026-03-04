@@ -74,7 +74,7 @@ func withRequestLogging(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, req)
-		logger.Info("http request completed", "method", req.Method, "path", req.URL.Path, "elapsed_ms", time.Since(start).Milliseconds())
+		logger.Debug("http request completed", "method", req.Method, "path", req.URL.Path, "elapsed_ms", time.Since(start).Milliseconds())
 	})
 }
 

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/text/encoding/charmap"
 )
 
 var (
@@ -212,7 +214,12 @@ func (m *Manager) writeCommand(sessionID, command string) error {
 	if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return err
 	}
-	if _, err := io.WriteString(conn, command+"\n"); err != nil {
+	payload, err := charmap.Windows1251.NewEncoder().Bytes([]byte(command + "\n"))
+	if err != nil {
+		m.logger.Warn("failed to encode command to cp1251, falling back to utf-8 bytes", "session_id", sessionID, "error", err.Error())
+		payload = []byte(command + "\n")
+	}
+	if _, err := conn.Write(payload); err != nil {
 		return err
 	}
 

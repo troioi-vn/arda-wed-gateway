@@ -17,6 +17,9 @@ bootstrap:
 	@./scripts/bootstrap.sh
 
 run-backend:
+	@set -a; \
+	if [ -f .env ]; then source .env; fi; \
+	set +a; \
 	cd backend && go run ./cmd/gateway
 
 test-backend:
