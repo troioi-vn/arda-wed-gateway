@@ -108,6 +108,7 @@ function App() {
   const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [suggestionCycle, setSuggestionCycle] = useState(0);
+  const suggestionGenerating = suggestionsEnabled && isSuggestionGenerating(suggestionStatus);
 
   const wsRef = useRef<WebSocket | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
@@ -179,6 +180,11 @@ function App() {
           if (payload.queue_reject_code === ErrorBodyCode.QUEUE_FULL) {
             pushToast(`QUEUE_FULL: ${payload.queue_depth ?? 0}/${payload.queue_max ?? 20} pending`);
           }
+          break;
+        case "queue.send_failed":
+          setInlineStatus(`Send failed (${payload.queue_depth ?? 0}/${payload.queue_max ?? 20})`);
+          pushToast(`Send failed for command: ${payload.text ?? "(blank)"}`);
+          appendLine(`[queue.send_failed] ${payload.text ?? ""}`);
           break;
         default:
           break;
@@ -277,28 +283,42 @@ function App() {
   const queueLabel = useMemo(() => `${queueDepth}/${queueMax}`, [queueDepth, queueMax]);
 
   async function handleConnectClick() {
-    const response = await postSessionConnect({ host, port });
-    if (response.status !== 200) {
-      pushToast("Session connect failed");
-      return;
+    try {
+      const response = await postSessionConnect({ host, port });
+      if (response.status !== 200) {
+        pushToast(response.data.error?.message ?? "Session connect failed");
+        return;
+      }
+      setConnected(true);
+      setSessionID(response.data.data.session_id);
+      setQueueDepth(response.data.data.queue_depth);
+      setQueueMax(response.data.data.queue_max ?? queueMax);
+      setInlineStatus(`Connected to ${host}:${port}`);
+    } catch (error: unknown) {
+      console.error("session connect failed", error);
+      const message = toActionErrorMessage("Session connect", error);
+      setInlineStatus(message);
+      pushToast(message);
     }
-    setConnected(true);
-    setSessionID(response.data.data.session_id);
-    setQueueDepth(response.data.data.queue_depth);
-    setQueueMax(response.data.data.queue_max ?? queueMax);
-    setInlineStatus(`Connected to ${host}:${port}`);
   }
 
   async function handleDisconnectClick() {
-    const response = await postSessionDisconnect();
-    if (response.status !== 200) {
-      pushToast("Session disconnect failed");
-      return;
+    try {
+      const response = await postSessionDisconnect();
+      if (response.status !== 200) {
+        pushToast(response.data.error?.message ?? "Session disconnect failed");
+        return;
+      }
+      setConnected(false);
+      setQueueDepth(response.data.data.queue_depth);
+      setQueueMax(response.data.data.queue_max ?? queueMax);
+      setInlineStatus("Disconnected");
+    } catch (error: unknown) {
+      console.error("session disconnect failed", error);
+      const message = toActionErrorMessage("Session disconnect", error);
+      setInlineStatus(message);
+      pushToast(message);
     }
-    setConnected(false);
-    setQueueDepth(response.data.data.queue_depth);
-    setQueueMax(response.data.data.queue_max ?? queueMax);
-    setInlineStatus("Disconnected");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -384,6 +404,12 @@ function App() {
 
       pushToast(response.data.error?.message ?? "Failed to enqueue command");
       return false;
+    } catch (error: unknown) {
+      console.error("enqueue command failed", { command, error });
+      const message = toActionErrorMessage("Command send", error);
+      setInlineStatus(message);
+      pushToast(message);
+      return false;
     } finally {
       setSendingCommand(false);
     }
@@ -428,29 +454,36 @@ function App() {
   }
 
   async function enqueueCommandFromTrigger(command: string): Promise<void> {
-    const response = await postCommandsEnqueue({ command });
-    if (response.status === 200) {
-      setQueueDepth(response.data.data.queue_depth);
-      setQueueMax(response.data.data.queue_max);
-      setInlineStatus(`Trigger queued (${response.data.data.queue_depth}/${response.data.data.queue_max})`);
-      return;
-    }
+    try {
+      const response = await postCommandsEnqueue({ command });
+      if (response.status === 200) {
+        setQueueDepth(response.data.data.queue_depth);
+        setQueueMax(response.data.data.queue_max);
+        setInlineStatus(`Trigger queued (${response.data.data.queue_depth}/${response.data.data.queue_max})`);
+        return;
+      }
 
-    const queueFull = response.data.error?.code === ErrorBodyCode.QUEUE_FULL;
-    if (queueFull) {
-      const details = response.data.error?.details as
-        | { queue_depth?: number; queue_max?: number }
-        | undefined;
-      const nextDepth = details?.queue_depth ?? queueDepth;
-      const nextMax = details?.queue_max ?? queueMax;
-      setQueueDepth(nextDepth);
-      setQueueMax(nextMax);
-      setInlineStatus(`Queue full (${nextDepth}/${nextMax})`);
-      pushToast(`QUEUE_FULL: ${nextDepth}/${nextMax} pending`);
-      return;
-    }
+      const queueFull = response.data.error?.code === ErrorBodyCode.QUEUE_FULL;
+      if (queueFull) {
+        const details = response.data.error?.details as
+          | { queue_depth?: number; queue_max?: number }
+          | undefined;
+        const nextDepth = details?.queue_depth ?? queueDepth;
+        const nextMax = details?.queue_max ?? queueMax;
+        setQueueDepth(nextDepth);
+        setQueueMax(nextMax);
+        setInlineStatus(`Queue full (${nextDepth}/${nextMax})`);
+        pushToast(`QUEUE_FULL: ${nextDepth}/${nextMax} pending`);
+        return;
+      }
 
-    pushToast(response.data.error?.message ?? "Failed to enqueue trigger command");
+      pushToast(response.data.error?.message ?? "Failed to enqueue trigger command");
+    } catch (error: unknown) {
+      console.error("trigger enqueue failed", { command, error });
+      const message = toActionErrorMessage("Trigger command send", error);
+      setInlineStatus(message);
+      pushToast(message);
+    }
   }
 
   function appendLine(line: string) {
@@ -563,7 +596,15 @@ function App() {
             </div>
 
             <div className="suggestion-status" data-testid="suggestion-status">
-              {renderSuggestionStatus(suggestionsEnabled, suggestionStatus, suggestionError, suggestion)}
+              {suggestionGenerating && (
+                <span
+                  className="suggestion-spinner"
+                  role="status"
+                  aria-label="LLM generation in progress"
+                  aria-live="polite"
+                />
+              )}
+              <span>{renderSuggestionStatus(suggestionsEnabled, suggestionStatus, suggestionError, suggestion)}</span>
             </div>
 
             {suggestion && (
@@ -611,6 +652,24 @@ function App() {
   );
 }
 
+function toActionErrorMessage(action: string, error: unknown): string {
+  const suffix = toUnknownErrorMessage(error);
+  if (suffix) {
+    return `${action} failed: ${suffix}`;
+  }
+  return `${action} failed`;
+}
+
+function toUnknownErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error.trim();
+  }
+  return "";
+}
+
 function renderSuggestionStatus(
   enabled: boolean,
   status: SuggestionStatus,
@@ -633,6 +692,10 @@ function renderSuggestionStatus(
     return "Suggestions ready";
   }
   return "No suggestions yet";
+}
+
+function isSuggestionGenerating(status: SuggestionStatus): boolean {
+  return status === "loading" || status === "stale";
 }
 
 function formatSentCommandEcho(command: string): string {

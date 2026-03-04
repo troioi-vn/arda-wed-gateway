@@ -241,6 +241,39 @@ describe("App suggestions", () => {
     await waitFor(() => expect(getSuggestionsLatest).toHaveBeenCalledTimes(2));
   });
 
+  it("shows a spinner while suggestion generation is in progress", async () => {
+    let resolveSuggestions: ((value: Awaited<ReturnType<typeof getSuggestionsLatest>>) => void) | undefined;
+    vi.mocked(getSuggestionsLatest).mockReset();
+    vi.mocked(getSuggestionsLatest).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSuggestions = resolve;
+        })
+    );
+
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+
+    expect(await screen.findByLabelText("LLM generation in progress")).toBeInTheDocument();
+
+    if (!resolveSuggestions) {
+      throw new Error("expected pending suggestion request");
+    }
+    act(() => {
+      resolveSuggestions({
+        status: 200,
+        data: {
+          data: {},
+          meta: { request_id: "r-pending", timestamp: "2026-03-05T10:16:00Z" },
+        },
+        headers: new Headers(),
+      });
+    });
+
+    await waitFor(() => expect(screen.queryByLabelText("LLM generation in progress")).not.toBeInTheDocument());
+  });
+
   it("submits empty command when Enter is pressed on blank input", async () => {
     render(<App />);
 
@@ -314,5 +347,84 @@ describe("App suggestions", () => {
     await waitFor(() => expect(postCommandsEnqueue).toHaveBeenCalledTimes(2));
     expect(postCommandsEnqueue).toHaveBeenNthCalledWith(1, { command: "взять пирог сумка" });
     expect(postCommandsEnqueue).toHaveBeenNthCalledWith(2, { command: "есть пирог" });
+  });
+
+  it("shows actionable UI signal when queue send fails event arrives", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      ws.emitMessage({
+        event: "queue.send_failed",
+        session_id: "s-1",
+        text: "look",
+        queue_depth: 2,
+        queue_max: 20,
+      });
+    });
+
+    expect(await screen.findByText("Send failed for command: look")).toBeInTheDocument();
+    expect(screen.getByText("Send failed (2/20)")).toBeInTheDocument();
+  });
+
+  it("shows toast when connect request rejects", async () => {
+    vi.mocked(postSessionConnect).mockRejectedValueOnce(new Error("Network down"));
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect((await screen.findAllByText("Session connect failed: Network down")).length).toBeGreaterThan(0);
+  });
+
+  it("shows toast when disconnect request rejects", async () => {
+    vi.mocked(postSessionDisconnect).mockRejectedValueOnce(new Error("Disconnect timeout"));
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      ws.emitMessage({
+        event: "session.status",
+        session_id: "s-1",
+        connected: true,
+        queue_depth: 0,
+        queue_max: 20,
+      });
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Disconnect" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect((await screen.findAllByText("Session disconnect failed: Disconnect timeout")).length).toBeGreaterThan(0);
+  });
+
+  it("keeps input focused and shows toast when enqueue request rejects", async () => {
+    vi.mocked(postCommandsEnqueue).mockRejectedValueOnce(new Error("socket reset"));
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      ws.emitMessage({
+        event: "session.status",
+        session_id: "s-1",
+        connected: true,
+        queue_depth: 0,
+        queue_max: 20,
+      });
+    });
+
+    const input = screen.getByPlaceholderText("Type command or press Enter to send blank line");
+    await waitFor(() => expect(input).toBeEnabled());
+    await user.type(input, "look{enter}");
+
+    expect((await screen.findAllByText("Command send failed: socket reset")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(input).toHaveFocus());
   });
 });
