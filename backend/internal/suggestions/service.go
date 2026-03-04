@@ -204,8 +204,10 @@ func (s *Service) buildPrompt(sessionID string) (string, error) {
 }
 
 func parseSuggestionJSON(raw string) (Suggestion, error) {
+	raw = normalizeSuggestionJSON(raw)
+
 	var parsed Suggestion
-	decoder := json.NewDecoder(strings.NewReader(strings.TrimSpace(raw)))
+	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&parsed); err != nil {
 		return Suggestion{}, fmt.Errorf("decode strict suggestion json: %w", err)
@@ -229,6 +231,36 @@ func parseSuggestionJSON(raw string) (Suggestion, error) {
 		}
 	}
 	return parsed, nil
+}
+
+func normalizeSuggestionJSON(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if !strings.Contains(raw, "```") {
+		return raw
+	}
+
+	start := strings.Index(raw, "```")
+	if start < 0 {
+		return raw
+	}
+
+	afterStart := raw[start+3:]
+	newline := strings.IndexByte(afterStart, '\n')
+	if newline < 0 {
+		return raw
+	}
+
+	bodyStart := start + 3 + newline + 1
+	end := strings.Index(raw[bodyStart:], "```")
+	if end < 0 {
+		return raw
+	}
+
+	block := strings.TrimSpace(raw[bodyStart : bodyStart+end])
+	if block == "" {
+		return raw
+	}
+	return block
 }
 
 func appendLogLines(existing []string, text string) []string {

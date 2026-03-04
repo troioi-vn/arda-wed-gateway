@@ -149,6 +149,26 @@ func TestInvalidJSONKeepsPreviousSuggestion(t *testing.T) {
 	}
 }
 
+func TestParseSuggestionJSONMarkdownFence(t *testing.T) {
+	t.Parallel()
+
+	raw := "```json\n{\"commands\":[\"look\"],\"reason\":\"valid\",\"expected_outcome\":\"read room\"}\n```"
+	parsed, err := parseSuggestionJSON(raw)
+	if err != nil {
+		t.Fatalf("parse fenced json: %v", err)
+	}
+
+	if len(parsed.Commands) != 1 || parsed.Commands[0] != "look" {
+		t.Fatalf("unexpected commands: %+v", parsed.Commands)
+	}
+	if parsed.Reason != "valid" {
+		t.Fatalf("unexpected reason: %q", parsed.Reason)
+	}
+	if parsed.ExpectedOutcome != "read room" {
+		t.Fatalf("unexpected expected_outcome: %q", parsed.ExpectedOutcome)
+	}
+}
+
 func waitForLatest(t *testing.T, svc *Service, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
