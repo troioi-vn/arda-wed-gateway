@@ -32,6 +32,7 @@ type SuggestionView = {
 };
 
 type SuggestionStatus = "idle" | "loading" | "ready" | "stale" | "error";
+type EnqueueSource = "user" | "suggestion" | "trigger";
 type TmpTrigger = {
   id: string;
   trigger: string;
@@ -104,7 +105,10 @@ function App() {
   const [suggestion, setSuggestion] = useState<SuggestionView | null>(null);
   const [suggestionStatus, setSuggestionStatus] = useState<SuggestionStatus>("idle");
   const [suggestionError, setSuggestionError] = useState("");
+  const [cancelingSuggestion, setCancelingSuggestion] = useState(false);
   const [sendingCommand, setSendingCommand] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [suggestionCycle, setSuggestionCycle] = useState(0);
@@ -215,52 +219,45 @@ function App() {
 
     async function pollSuggestions(initial: boolean) {
       const currentSuggestion = suggestionRef.current;
-      let staleTimeoutID: number | undefined;
       if (initial) {
         setSuggestionStatus(currentSuggestion ? "stale" : "loading");
-      } else if (currentSuggestion) {
-        staleTimeoutID = window.setTimeout(() => {
-          if (!canceled) {
-            setSuggestionStatus((current) => (current === "ready" ? "stale" : current));
-          }
-        }, 350);
       }
 
       try {
         const response = await getSuggestionsLatest();
-        if (staleTimeoutID) {
-          window.clearTimeout(staleTimeoutID);
-        }
         if (canceled) {
           return;
         }
 
         if (response.status !== 200) {
           setSuggestionStatus("error");
-          setSuggestionError(response.data.error?.message ?? "Failed to fetch suggestions");
+          setSuggestionError("Failed to fetch suggestions");
           return;
         }
 
         const payload = response.data.data;
-        if (!isSuggestionPayload(payload)) {
-          setSuggestionStatus((current) =>
-            currentSuggestion ? "stale" : current === "loading" ? "idle" : current
-          );
+        const nextSuggestion = toSuggestionView(payload);
+        if (nextSuggestion) {
+          setSuggestion(nextSuggestion);
+        }
+        const runtime = readSuggestionRuntime(payload);
+        if (runtime.lastError) {
+          setSuggestionStatus("error");
+          setSuggestionError(runtime.lastError);
           return;
         }
 
         setSuggestionError("");
-        setSuggestion({
-          commands: payload.commands,
-          reason: payload.reason,
-          expectedOutcome: payload.expected_outcome,
-          generatedAt: payload.generated_at,
-        });
-        setSuggestionStatus("ready");
-      } catch {
-        if (staleTimeoutID) {
-          window.clearTimeout(staleTimeoutID);
+        if (runtime.inProgress) {
+          setSuggestionStatus(nextSuggestion || currentSuggestion ? "stale" : "loading");
+          return;
         }
+        if (nextSuggestion) {
+          setSuggestionStatus("ready");
+          return;
+        }
+        setSuggestionStatus(currentSuggestion ? "stale" : "idle");
+      } catch {
         if (canceled) {
           return;
         }
@@ -281,11 +278,36 @@ function App() {
   }, [suggestionCycle, suggestionsEnabled]);
 
   const queueLabel = useMemo(() => `${queueDepth}/${queueMax}`, [queueDepth, queueMax]);
+  const queuePercent = useMemo(() => {
+    if (queueMax <= 0) {
+      return 0;
+    }
+    return Math.max(0, Math.min(100, Math.round((queueDepth / queueMax) * 100)));
+  }, [queueDepth, queueMax]);
+  const connectionLabel = connected ? "connected" : "disconnected";
+  const queueDepthRef = useRef(queueDepth);
+  const queueMaxRef = useRef(queueMax);
+
+  useEffect(() => {
+    queueDepthRef.current = queueDepth;
+    queueMaxRef.current = queueMax;
+  }, [queueDepth, queueMax]);
 
   async function handleConnectClick() {
+    if (connected || connecting) {
+      return;
+    }
+
+    setConnecting(true);
     try {
       const response = await postSessionConnect({ host, port });
       if (response.status !== 200) {
+        if (response.data.error?.code === ErrorBodyCode.SESSION_ALREADY_CONNECTED) {
+          setConnected(true);
+          setSessionID((response.data.error?.details?.session_id as string | undefined) ?? sessionID);
+          setInlineStatus("Session already connected");
+          return;
+        }
         pushToast(response.data.error?.message ?? "Session connect failed");
         return;
       }
@@ -299,10 +321,17 @@ function App() {
       const message = toActionErrorMessage("Session connect", error);
       setInlineStatus(message);
       pushToast(message);
+    } finally {
+      setConnecting(false);
     }
   }
 
   async function handleDisconnectClick() {
+    if (!connected || disconnecting) {
+      return;
+    }
+
+    setDisconnecting(true);
     try {
       const response = await postSessionDisconnect();
       if (response.status !== 200) {
@@ -318,6 +347,8 @@ function App() {
       const message = toActionErrorMessage("Session disconnect", error);
       setInlineStatus(message);
       pushToast(message);
+    } finally {
+      setDisconnecting(false);
     }
   }
 
@@ -328,7 +359,7 @@ function App() {
       return;
     }
 
-    const sent = await enqueueCommand(command);
+    const sent = await enqueueCommand(command, "user");
     if (sent) {
       setInputValue("");
     }
@@ -342,7 +373,7 @@ function App() {
     if (!connected || sendingCommand) {
       return;
     }
-    const sent = await enqueueCommand(command);
+    const sent = await enqueueCommand(command, "suggestion");
     if (sent) {
       restartSuggestionCycle();
     }
@@ -350,6 +381,24 @@ function App() {
 
   function handleSuggestionRefuse() {
     restartSuggestionCycle();
+  }
+
+  async function handleSuggestionCancel() {
+    if (cancelingSuggestion || !suggestionGenerating) {
+      return;
+    }
+
+    setCancelingSuggestion(true);
+    try {
+      const response = await fetch("/api/v0/suggestions/cancel", { method: "POST" });
+      if (!response.ok) {
+        setSuggestionError("Failed to cancel suggestion request");
+      }
+    } catch {
+      setSuggestionError("Failed to cancel suggestion request");
+    } finally {
+      setCancelingSuggestion(false);
+    }
   }
 
   function handleSuggestionToggle() {
@@ -377,14 +426,25 @@ function App() {
     setSuggestionCycle((current) => current + 1);
   }
 
-  async function enqueueCommand(command: string): Promise<boolean> {
-    setSendingCommand(true);
+  async function enqueueCommand(command: string, source: EnqueueSource): Promise<boolean> {
+    const shouldTrackSend = source !== "trigger";
+    if (shouldTrackSend) {
+      setSendingCommand(true);
+    }
+
+    const actionLabel =
+      source === "trigger" ? "Trigger command send" : source === "suggestion" ? "Suggestion command send" : "Command send";
+
     try {
       const response = await postCommandsEnqueue({ command });
       if (response.status === 200) {
         setQueueDepth(response.data.data.queue_depth);
         setQueueMax(response.data.data.queue_max);
-        setInlineStatus(`Queued (${response.data.data.queue_depth}/${response.data.data.queue_max})`);
+        setInlineStatus(
+          source === "trigger"
+            ? `Trigger queued (${response.data.data.queue_depth}/${response.data.data.queue_max})`
+            : `Queued (${response.data.data.queue_depth}/${response.data.data.queue_max})`
+        );
         return true;
       }
 
@@ -393,8 +453,8 @@ function App() {
         const details = response.data.error?.details as
           | { queue_depth?: number; queue_max?: number }
           | undefined;
-        const nextDepth = details?.queue_depth ?? queueDepth;
-        const nextMax = details?.queue_max ?? queueMax;
+        const nextDepth = details?.queue_depth ?? queueDepthRef.current;
+        const nextMax = details?.queue_max ?? queueMaxRef.current;
         setQueueDepth(nextDepth);
         setQueueMax(nextMax);
         setInlineStatus(`Queue full (${nextDepth}/${nextMax})`);
@@ -402,16 +462,18 @@ function App() {
         return false;
       }
 
-      pushToast(response.data.error?.message ?? "Failed to enqueue command");
+      pushToast(response.data.error?.message ?? "Failed to enqueue");
       return false;
     } catch (error: unknown) {
       console.error("enqueue command failed", { command, error });
-      const message = toActionErrorMessage("Command send", error);
+      const message = toActionErrorMessage(actionLabel, error);
       setInlineStatus(message);
       pushToast(message);
       return false;
     } finally {
-      setSendingCommand(false);
+      if (shouldTrackSend) {
+        setSendingCommand(false);
+      }
     }
   }
 
@@ -446,43 +508,10 @@ function App() {
         if (!nextCommand) {
           continue;
         }
-        await enqueueCommandFromTrigger(nextCommand);
+        await enqueueCommand(nextCommand, "trigger");
       }
     } finally {
       processingTriggerQueueRef.current = false;
-    }
-  }
-
-  async function enqueueCommandFromTrigger(command: string): Promise<void> {
-    try {
-      const response = await postCommandsEnqueue({ command });
-      if (response.status === 200) {
-        setQueueDepth(response.data.data.queue_depth);
-        setQueueMax(response.data.data.queue_max);
-        setInlineStatus(`Trigger queued (${response.data.data.queue_depth}/${response.data.data.queue_max})`);
-        return;
-      }
-
-      const queueFull = response.data.error?.code === ErrorBodyCode.QUEUE_FULL;
-      if (queueFull) {
-        const details = response.data.error?.details as
-          | { queue_depth?: number; queue_max?: number }
-          | undefined;
-        const nextDepth = details?.queue_depth ?? queueDepth;
-        const nextMax = details?.queue_max ?? queueMax;
-        setQueueDepth(nextDepth);
-        setQueueMax(nextMax);
-        setInlineStatus(`Queue full (${nextDepth}/${nextMax})`);
-        pushToast(`QUEUE_FULL: ${nextDepth}/${nextMax} pending`);
-        return;
-      }
-
-      pushToast(response.data.error?.message ?? "Failed to enqueue trigger command");
-    } catch (error: unknown) {
-      console.error("trigger enqueue failed", { command, error });
-      const message = toActionErrorMessage("Trigger command send", error);
-      setInlineStatus(message);
-      pushToast(message);
     }
   }
 
@@ -515,7 +544,10 @@ function App() {
       <section className="terminal-pane">
         <header className="pane-header">
           <span>Arda Terminal</span>
-          <span className="meta">{sessionID || "session pending"}</span>
+          <div className="pane-header-actions">
+            <span className={`status-pill ${connected ? "online" : "offline"}`}>{connectionLabel}</span>
+            <span className="meta">{sessionID || "session pending"}</span>
+          </div>
         </header>
         <div className="terminal-body">
           {terminalLines.map((line, index) => (
@@ -542,24 +574,31 @@ function App() {
       <aside className="map-pane">
         <header className="pane-header">Session</header>
         <div className="panel-body session-controls">
+          <div className="session-summary" aria-live="polite">
+            <span className={`status-pill ${connected ? "online" : "offline"}`}>Session {connectionLabel}</span>
+            <span className="meta">Queue {queueLabel}</span>
+            <div className="queue-meter" role="meter" aria-valuemin={0} aria-valuemax={queueMax} aria-valuenow={queueDepth}>
+              <span className="queue-meter-fill" style={{ width: `${queuePercent}%` }} />
+            </div>
+          </div>
           <label>
             Host
-            <input value={host} onChange={(event) => setHost(event.target.value)} disabled={connected} />
+            <input value={host} onChange={(event) => setHost(event.target.value)} disabled={connected || connecting} />
           </label>
           <label>
             Port
             <input
               value={port}
               onChange={(event) => setPort(Number(event.target.value) || 0)}
-              disabled={connected}
+              disabled={connected || connecting}
             />
           </label>
           <div className="button-row">
-            <button type="button" onClick={handleConnectClick} disabled={connected}>
-              Connect
+            <button type="button" onClick={handleConnectClick} disabled={connected || connecting}>
+              {connecting ? "Connecting..." : "Connect"}
             </button>
-            <button type="button" onClick={handleDisconnectClick} disabled={!connected}>
-              Disconnect
+            <button type="button" onClick={handleDisconnectClick} disabled={!connected || disconnecting}>
+              {disconnecting ? "Disconnecting..." : "Disconnect"}
             </button>
           </div>
         </div>
@@ -589,7 +628,7 @@ function App() {
         </header>
         {isSuggestionOpen && (
           <div className="panel-body queue-panel">
-            <div>Connection: {connected ? "connected" : "disconnected"}</div>
+            <div>Connection: {connectionLabel}</div>
             <div>Queue: {queueLabel}</div>
             <div className={inlineStatus.includes("Queue full") ? "inline-status error" : "inline-status"}>
               {inlineStatus}
@@ -605,6 +644,16 @@ function App() {
                 />
               )}
               <span>{renderSuggestionStatus(suggestionsEnabled, suggestionStatus, suggestionError, suggestion)}</span>
+              {suggestionGenerating && (
+                <button
+                  type="button"
+                  className="suggestion-button"
+                  onClick={handleSuggestionCancel}
+                  disabled={cancelingSuggestion}
+                >
+                  {cancelingSuggestion ? "Canceling..." : "Cancel"}
+                </button>
+              )}
             </div>
 
             {suggestion && (
@@ -831,6 +880,32 @@ function isSuggestionPayload(value: unknown): value is {
     typeof candidate.expected_outcome === "string" &&
     typeof candidate.generated_at === "string"
   );
+}
+
+function toSuggestionView(value: unknown): SuggestionView | null {
+  if (!isSuggestionPayload(value)) {
+    return null;
+  }
+  return {
+    commands: value.commands,
+    reason: value.reason,
+    expectedOutcome: value.expected_outcome,
+    generatedAt: value.generated_at,
+  };
+}
+
+function readSuggestionRuntime(value: unknown): { inProgress: boolean; lastError: string } {
+  if (!value || typeof value !== "object") {
+    return { inProgress: false, lastError: "" };
+  }
+  const candidate = value as {
+    in_progress?: unknown;
+    last_error?: unknown;
+  };
+  return {
+    inProgress: candidate.in_progress === true,
+    lastError: typeof candidate.last_error === "string" ? candidate.last_error : "",
+  };
 }
 
 export default App;

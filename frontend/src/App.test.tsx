@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { ErrorBodyCode } from "./lib/api/generated/model";
 
 vi.mock("./lib/api/generated/gateway", () => ({
   getSuggestionsLatest: vi.fn(),
@@ -49,6 +50,14 @@ describe("App suggestions", () => {
     vi.spyOn(window, "setInterval").mockImplementation(
       (() => ({}) as unknown as ReturnType<typeof setInterval>)
     );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { canceled: true } }),
+      })
+    );
 
     vi.mocked(postSessionConnect).mockResolvedValue({
       status: 200,
@@ -79,15 +88,16 @@ describe("App suggestions", () => {
 
     vi.mocked(getSuggestionsLatest).mockResolvedValue({
       status: 200,
-      data: {
         data: {
-          commands: ["look", "score"],
-          reason: "Scan room context",
-          expected_outcome: "Understand immediate options",
-          generated_at: "2026-03-05T10:15:00Z",
+          data: {
+            commands: ["look", "score"],
+            reason: "Scan room context",
+            expected_outcome: "Understand immediate options",
+            generated_at: "2026-03-05T10:15:00Z",
+            in_progress: false,
+          },
+          meta: { request_id: "r-4", timestamp: "2026-03-05T10:15:00Z" },
         },
-        meta: { request_id: "r-4", timestamp: "2026-03-05T10:15:00Z" },
-      },
       headers: new Headers(),
     });
   });
@@ -145,6 +155,7 @@ describe("App suggestions", () => {
             reason: "Scan room context",
             expected_outcome: "Understand immediate options",
             generated_at: "2026-03-05T10:15:00Z",
+            in_progress: false,
           },
           meta: { request_id: "r-4", timestamp: "2026-03-05T10:15:00Z" },
         },
@@ -153,7 +164,7 @@ describe("App suggestions", () => {
       .mockResolvedValue({
         status: 200,
         data: {
-          data: {},
+          data: { in_progress: false },
           meta: { request_id: "r-5", timestamp: "2026-03-05T10:15:01Z" },
         },
         headers: new Headers(),
@@ -192,6 +203,7 @@ describe("App suggestions", () => {
             reason: "Scan room context",
             expected_outcome: "Understand immediate options",
             generated_at: "2026-03-05T10:15:00Z",
+            in_progress: false,
           },
           meta: { request_id: "r-4", timestamp: "2026-03-05T10:15:00Z" },
         },
@@ -200,7 +212,7 @@ describe("App suggestions", () => {
       .mockResolvedValue({
         status: 200,
         data: {
-          data: {},
+          data: { in_progress: false },
           meta: { request_id: "r-6", timestamp: "2026-03-05T10:15:02Z" },
         },
         headers: new Headers(),
@@ -261,10 +273,10 @@ describe("App suggestions", () => {
       throw new Error("expected pending suggestion request");
     }
     act(() => {
-      resolveSuggestions({
+      resolveSuggestions?.({
         status: 200,
         data: {
-          data: {},
+          data: { in_progress: false },
           meta: { request_id: "r-pending", timestamp: "2026-03-05T10:16:00Z" },
         },
         headers: new Headers(),
@@ -296,6 +308,44 @@ describe("App suggestions", () => {
 
     expect(postCommandsEnqueue).toHaveBeenCalledWith({ command: "" });
     await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("shows backend suggestion failure message in UI", async () => {
+    vi.mocked(getSuggestionsLatest).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        data: {
+          in_progress: false,
+          last_error: "read openrouter response: context deadline exceeded",
+        },
+        meta: { request_id: "r-fail", timestamp: "2026-03-05T10:16:00Z" },
+      },
+      headers: new Headers(),
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+    expect(await screen.findByText("read openrouter response: context deadline exceeded")).toBeInTheDocument();
+  });
+
+  it("shows cancel control while suggestion request is in progress", async () => {
+    vi.mocked(getSuggestionsLatest).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        data: { in_progress: true },
+        meta: { request_id: "r-progress", timestamp: "2026-03-05T10:16:00Z" },
+      },
+      headers: new Headers(),
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+    const cancelButton = await screen.findByRole("button", { name: "Cancel" });
+    await user.click(cancelButton);
+
+    expect(fetch).toHaveBeenCalledWith("/api/v0/suggestions/cancel", { method: "POST" });
   });
 
   it("renders ANSI colored terminal output", async () => {
@@ -378,6 +428,66 @@ describe("App suggestions", () => {
     await user.click(screen.getByRole("button", { name: "Connect" }));
 
     expect((await screen.findAllByText("Session connect failed: Network down")).length).toBeGreaterThan(0);
+  });
+
+  it("prevents duplicate connect requests while connect is in flight", async () => {
+    let resolveConnect: ((value: Awaited<ReturnType<typeof postSessionConnect>>) => void) | undefined;
+    vi.mocked(postSessionConnect).mockReset();
+    vi.mocked(postSessionConnect).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveConnect = resolve;
+        })
+    );
+
+    render(<App />);
+    const user = userEvent.setup();
+    const connectButton = screen.getByRole("button", { name: "Connect" });
+
+    await user.click(connectButton);
+    await user.click(screen.getByRole("button", { name: "Connecting..." }));
+
+    expect(postSessionConnect).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Connecting..." })).toBeDisabled();
+
+    if (!resolveConnect) {
+      throw new Error("expected pending connect request");
+    }
+    act(() => {
+      resolveConnect?.({
+        status: 200,
+        data: {
+          data: { session_id: "s-1", connected: true, queue_depth: 0, queue_max: 20 },
+          meta: { request_id: "r-connect", timestamp: "2026-03-05T00:00:00Z" },
+        },
+        headers: new Headers(),
+      });
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled());
+  });
+
+  it("handles already-connected response without toast spam", async () => {
+    vi.mocked(postSessionConnect).mockResolvedValueOnce({
+      status: 409,
+      data: {
+        error: {
+          code: ErrorBodyCode.SESSION_ALREADY_CONNECTED,
+          message: "session is already connected",
+          details: { session_id: "s-1" },
+        },
+        meta: { request_id: "r-409", timestamp: "2026-03-05T00:00:00Z" },
+      },
+      headers: new Headers(),
+    });
+
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Disconnect" })).toBeEnabled();
+    expect(screen.queryByText("session is already connected")).not.toBeInTheDocument();
   });
 
   it("shows toast when disconnect request rejects", async () => {

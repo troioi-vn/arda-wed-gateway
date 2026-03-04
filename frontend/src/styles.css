@@ -55,6 +55,7 @@ input {
 .pane-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid #6f583a;
@@ -94,6 +95,14 @@ input {
   background: #16110d;
   color: #f4f0e8;
   padding: 8px 10px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.command-input:focus,
+.panel-body input:focus {
+  outline: none;
+  border-color: #c79c69;
+  box-shadow: 0 0 0 2px rgba(199, 156, 105, 0.28);
 }
 
 button {
@@ -103,6 +112,18 @@ button {
   color: #fff7ec;
   padding: 8px 12px;
   cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.07);
+}
+
+button:focus-visible {
+  outline: none;
+  border-color: #d4a977;
+  box-shadow: 0 0 0 2px rgba(212, 169, 119, 0.3);
 }
 
 button:disabled {
@@ -124,6 +145,16 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.session-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #5b442d;
+  border-radius: 10px;
+  background: rgba(39, 28, 19, 0.66);
 }
 
 .session-controls label {
@@ -157,6 +188,46 @@ button:disabled {
   gap: 8px;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #8b6a4a;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.status-pill.online {
+  border-color: #5e9f68;
+  color: #bef3c6;
+  background: rgba(45, 84, 50, 0.65);
+}
+
+.status-pill.offline {
+  border-color: #a87966;
+  color: #f0d0bf;
+  background: rgba(88, 48, 36, 0.6);
+}
+
+.queue-meter {
+  width: 100%;
+  height: 8px;
+  background: rgba(17, 12, 9, 0.95);
+  border: 1px solid #5e472f;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.queue-meter-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #7ea764 0%, #c89a62 60%, #b46a5c 100%);
+  transition: width 160ms ease;
+}
+
 .collapse-toggle {
   padding: 4px 10px;
   font-size: 0.82rem;
@@ -167,6 +238,7 @@ button:disabled {
   flex-direction: column;
   gap: 8px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .inline-status {
