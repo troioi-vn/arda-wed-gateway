@@ -108,6 +108,7 @@ describe("App suggestions", () => {
     expect(screen.getByText("Expected: Understand immediate options")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "look" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "score" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refuse" })).toBeInTheDocument();
   });
 
   it("enqueues selected suggestion command when clicked", async () => {
@@ -133,11 +134,111 @@ describe("App suggestions", () => {
     expect(postCommandsEnqueue).toHaveBeenCalledWith({ command: "look" });
   });
 
+  it("clears suggestion and starts a new cycle after applying a suggestion", async () => {
+    vi.mocked(getSuggestionsLatest).mockReset();
+    vi.mocked(getSuggestionsLatest)
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: {
+            commands: ["look"],
+            reason: "Scan room context",
+            expected_outcome: "Understand immediate options",
+            generated_at: "2026-03-05T10:15:00Z",
+          },
+          meta: { request_id: "r-4", timestamp: "2026-03-05T10:15:00Z" },
+        },
+        headers: new Headers(),
+      })
+      .mockResolvedValue({
+        status: 200,
+        data: {
+          data: {},
+          meta: { request_id: "r-5", timestamp: "2026-03-05T10:15:01Z" },
+        },
+        headers: new Headers(),
+      });
+
+    render(<App />);
+
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      ws.emitMessage({
+        event: "session.status",
+        session_id: "s-1",
+        connected: true,
+        queue_depth: 0,
+        queue_max: 20,
+      });
+    });
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+    await user.click(await screen.findByRole("button", { name: "look" }));
+
+    expect(postCommandsEnqueue).toHaveBeenCalledWith({ command: "look" });
+    await waitFor(() => expect(getSuggestionsLatest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Reason: Scan room context")).not.toBeInTheDocument());
+  });
+
+  it("clears suggestion and starts a new cycle when refused", async () => {
+    vi.mocked(getSuggestionsLatest).mockReset();
+    vi.mocked(getSuggestionsLatest)
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: {
+            commands: ["look"],
+            reason: "Scan room context",
+            expected_outcome: "Understand immediate options",
+            generated_at: "2026-03-05T10:15:00Z",
+          },
+          meta: { request_id: "r-4", timestamp: "2026-03-05T10:15:00Z" },
+        },
+        headers: new Headers(),
+      })
+      .mockResolvedValue({
+        status: 200,
+        data: {
+          data: {},
+          meta: { request_id: "r-6", timestamp: "2026-03-05T10:15:02Z" },
+        },
+        headers: new Headers(),
+      });
+
+    render(<App />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+    await user.click(await screen.findByRole("button", { name: "Refuse" }));
+
+    expect(postCommandsEnqueue).not.toHaveBeenCalled();
+    await waitFor(() => expect(getSuggestionsLatest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Reason: Scan room context")).not.toBeInTheDocument());
+  });
+
   it("keeps suggestions panel collapsed by default", async () => {
     render(<App />);
     await waitFor(() => expect(getSuggestionsLatest).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Expand" })).toBeInTheDocument();
     expect(screen.queryByText("Reason: Scan room context")).not.toBeInTheDocument();
+  });
+
+  it("toggles AI suggestions off and on from the UI", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Expand" }));
+
+    await screen.findByText("Reason: Scan room context");
+    await waitFor(() => expect(getSuggestionsLatest).toHaveBeenCalledTimes(1));
+
+    await user.click(screen.getByRole("button", { name: "AI On" }));
+    expect(screen.getByText("Suggestions disabled")).toBeInTheDocument();
+    expect(screen.queryByText("Reason: Scan room context")).not.toBeInTheDocument();
+    expect(getSuggestionsLatest).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "AI Off" }));
+    await waitFor(() => expect(getSuggestionsLatest).toHaveBeenCalledTimes(2));
   });
 
   it("submits empty command when Enter is pressed on blank input", async () => {

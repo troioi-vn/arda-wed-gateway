@@ -106,6 +106,8 @@ function App() {
   const [suggestionError, setSuggestionError] = useState("");
   const [sendingCommand, setSendingCommand] = useState(false);
   const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
+  const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
+  const [suggestionCycle, setSuggestionCycle] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
@@ -198,6 +200,11 @@ function App() {
   }, [suggestion]);
 
   useEffect(() => {
+    if (!suggestionsEnabled) {
+      setSuggestionStatus("idle");
+      return;
+    }
+
     let canceled = false;
 
     async function pollSuggestions(initial: boolean) {
@@ -265,7 +272,7 @@ function App() {
       canceled = true;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [suggestionCycle, suggestionsEnabled]);
 
   const queueLabel = useMemo(() => `${queueDepth}/${queueMax}`, [queueDepth, queueMax]);
 
@@ -315,7 +322,39 @@ function App() {
     if (!connected || sendingCommand) {
       return;
     }
-    await enqueueCommand(command);
+    const sent = await enqueueCommand(command);
+    if (sent) {
+      restartSuggestionCycle();
+    }
+  }
+
+  function handleSuggestionRefuse() {
+    restartSuggestionCycle();
+  }
+
+  function handleSuggestionToggle() {
+    if (suggestionsEnabled) {
+      setSuggestionsEnabled(false);
+      setSuggestion(null);
+      setSuggestionError("");
+      setSuggestionStatus("idle");
+      return;
+    }
+
+    setSuggestionsEnabled(true);
+    setSuggestionStatus("loading");
+    setSuggestionCycle((current) => current + 1);
+  }
+
+  function restartSuggestionCycle() {
+    setSuggestion(null);
+    setSuggestionError("");
+    if (!suggestionsEnabled) {
+      setSuggestionStatus("idle");
+      return;
+    }
+    setSuggestionStatus("loading");
+    setSuggestionCycle((current) => current + 1);
   }
 
   async function enqueueCommand(command: string): Promise<boolean> {
@@ -500,6 +539,14 @@ function App() {
             <button
               type="button"
               className="collapse-toggle"
+              onClick={handleSuggestionToggle}
+              aria-pressed={suggestionsEnabled}
+            >
+              {suggestionsEnabled ? "AI On" : "AI Off"}
+            </button>
+            <button
+              type="button"
+              className="collapse-toggle"
               onClick={() => setIsSuggestionOpen((current) => !current)}
               aria-expanded={isSuggestionOpen}
             >
@@ -516,7 +563,7 @@ function App() {
             </div>
 
             <div className="suggestion-status" data-testid="suggestion-status">
-              {renderSuggestionStatus(suggestionStatus, suggestionError, suggestion)}
+              {renderSuggestionStatus(suggestionsEnabled, suggestionStatus, suggestionError, suggestion)}
             </div>
 
             {suggestion && (
@@ -538,6 +585,14 @@ function App() {
                       {command}
                     </button>
                   ))}
+                  <button
+                    type="button"
+                    className="suggestion-button"
+                    onClick={handleSuggestionRefuse}
+                    disabled={sendingCommand}
+                  >
+                    Refuse
+                  </button>
                 </div>
               </div>
             )}
@@ -557,10 +612,14 @@ function App() {
 }
 
 function renderSuggestionStatus(
+  enabled: boolean,
   status: SuggestionStatus,
   error: string,
   suggestion: SuggestionView | null
 ): string {
+  if (!enabled) {
+    return "Suggestions disabled";
+  }
   if (status === "loading") {
     return "Suggestions loading...";
   }
