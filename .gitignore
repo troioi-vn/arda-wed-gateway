@@ -16,3 +16,5 @@ backend/bin/
 .DS_Store
 
 frontend/src/tmp-triggers.json
+backend/logs/
+backend/tmp/
