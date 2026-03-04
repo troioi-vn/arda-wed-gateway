@@ -11,6 +11,6 @@ export interface SessionStatusPayload {
   session_id: string;
   connected: boolean;
   queue_depth: number;
-  queue_max?: number;
+  queue_max: number;
   last_activity_at?: string;
 }

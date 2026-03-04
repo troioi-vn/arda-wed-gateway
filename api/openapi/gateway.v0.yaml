@@ -50,8 +50,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessSessionStatusResponse"
-        default:
-          $ref: "#/components/responses/ErrorEnvelope"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "409":
+          $ref: "#/components/responses/SessionAlreadyConnectedError"
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailableError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v0/session/disconnect:
     post:
       operationId: postSessionDisconnect
@@ -63,8 +69,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessSessionStatusResponse"
-        default:
-          $ref: "#/components/responses/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/SessionNotConnectedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v0/session/status:
     get:
       operationId: getSessionStatus
@@ -76,8 +84,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessSessionStatusResponse"
-        default:
-          $ref: "#/components/responses/ErrorEnvelope"
   /api/v0/state/snapshot:
     get:
       operationId: getStateSnapshot
@@ -89,8 +95,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessStateSnapshotResponse"
-        default:
-          $ref: "#/components/responses/ErrorEnvelope"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/v0/suggestions/latest:
     get:
       operationId: getSuggestionsLatest
@@ -102,8 +108,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessSuggestionResponse"
-        default:
-          $ref: "#/components/responses/ErrorEnvelope"
   /api/v0/commands/enqueue:
     post:
       operationId: postCommandsEnqueue
@@ -131,7 +135,46 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    InvalidRequestError:
+      description: Invalid request body or required fields
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    SessionNotConnectedError:
+      description: Session operation requires an active session
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    SessionAlreadyConnectedError:
+      description: Session is already connected
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    QueueFullError:
+      description: Command queue is full
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UpstreamUnavailableError:
+      description: Upstream MUD host is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: Internal gateway failure
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
+    EmptyObject:
+      type: object
+      additionalProperties: false
     Meta:
       type: object
       required: [request_id, timestamp]
@@ -189,7 +232,7 @@ components:
           type: string
     SessionStatusPayload:
       type: object
-      required: [session_id, connected, queue_depth]
+      required: [session_id, connected, queue_depth, queue_max]
       properties:
         session_id:
           type: string
@@ -217,6 +260,10 @@ components:
         generated_at:
           type: string
           format: date-time
+    SuggestionPayloadOrEmpty:
+      oneOf:
+        - $ref: "#/components/schemas/SuggestionPayload"
+        - $ref: "#/components/schemas/EmptyObject"
     StateSnapshotPayload:
       type: object
       properties:
@@ -250,6 +297,10 @@ components:
           head: рогатый шлем
           wield: эльфийский клинок
         updated_at: "2026-03-02T11:12:18.000000000Z"
+    StateSnapshotPayloadOrEmpty:
+      oneOf:
+        - $ref: "#/components/schemas/StateSnapshotPayload"
+        - $ref: "#/components/schemas/EmptyObject"
     PromptTuplePayload:
       type: object
       required: [hp_current, hp_max, ma_current, ma_max, mv_current, mv_max, exp]
@@ -470,7 +521,7 @@ components:
       required: [data, meta]
       properties:
         data:
-          $ref: "#/components/schemas/StateSnapshotPayload"
+          $ref: "#/components/schemas/StateSnapshotPayloadOrEmpty"
         meta:
           $ref: "#/components/schemas/Meta"
     SuccessSuggestionResponse:
@@ -478,7 +529,7 @@ components:
       required: [data, meta]
       properties:
         data:
-          $ref: "#/components/schemas/SuggestionPayload"
+          $ref: "#/components/schemas/SuggestionPayloadOrEmpty"
         meta:
           $ref: "#/components/schemas/Meta"
     SuccessEnqueueResponse:

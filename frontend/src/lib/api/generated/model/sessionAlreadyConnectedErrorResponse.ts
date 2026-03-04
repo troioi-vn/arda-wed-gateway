@@ -6,10 +6,9 @@
 
  * OpenAPI spec version: 0.1.0
  */
-import type { StateSnapshotPayloadOrEmpty } from './stateSnapshotPayloadOrEmpty';
-import type { Meta } from './meta';
+import type { ErrorResponse } from './errorResponse';
 
-export interface SuccessStateSnapshotResponse {
-  data: StateSnapshotPayloadOrEmpty;
-  meta: Meta;
-}
+/**
+ * Session is already connected
+ */
+export type SessionAlreadyConnectedErrorResponse = ErrorResponse;

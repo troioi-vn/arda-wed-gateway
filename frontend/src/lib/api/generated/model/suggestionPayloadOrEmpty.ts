@@ -6,10 +6,7 @@
 
  * OpenAPI spec version: 0.1.0
  */
-import type { StateSnapshotPayloadOrEmpty } from './stateSnapshotPayloadOrEmpty';
-import type { Meta } from './meta';
+import type { SuggestionPayload } from './suggestionPayload';
+import type { EmptyObject } from './emptyObject';
 
-export interface SuccessStateSnapshotResponse {
-  data: StateSnapshotPayloadOrEmpty;
-  meta: Meta;
-}
+export type SuggestionPayloadOrEmpty = SuggestionPayload | EmptyObject;

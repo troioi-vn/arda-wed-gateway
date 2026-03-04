@@ -348,8 +348,11 @@ Ordered issue-level implementation plan:
    - Text update trigger with debounce, prompt assembly, strict JSON parse, stale-response discard, latest suggestion endpoint.
 8. **M1-08: Frontend terminal + queue UX + suggestions**
    - Terminal center panel, input history, queue-full UX, clickable suggestion actions.
-9. **M1-09: OpenAPI + Orval integration**
-   - Finalize `gateway.v0.yaml`, wire Orval config/script, replace manual fetch calls.
+9. **M1-09: OpenAPI + Orval integration** *(completed 2026-03-05)*
+   - Finalized `gateway.v0.yaml` to match backend session/state/suggestions success + error behavior.
+   - Confirmed frontend HTTP API calls use generated Orval client (WebSocket remains direct runtime transport).
+   - Regenerated frontend API client via `npm run api:generate`.
+   - Added backend contract sanity tests for session/state/suggestions surfaces.
 10. **M1-10: Integration test pass + MVP hardening**
     - WS flow smoke, queue burst test, fixture regression, release checklist.
 

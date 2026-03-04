@@ -7,6 +7,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './emptyObject';
 export * from './enqueueCommandRequest';
 export * from './enqueuePayload';
 export * from './errorBody';
@@ -15,23 +16,30 @@ export * from './errorBodyDetails';
 export * from './errorEnvelopeResponse';
 export * from './errorResponse';
 export * from './healthPayload';
+export * from './internalErrorResponse';
+export * from './invalidRequestErrorResponse';
 export * from './meta';
 export * from './promptTuplePayload';
 export * from './queueAcceptedEvent';
 export * from './queueAcceptedEventEvent';
+export * from './queueFullErrorResponse';
 export * from './queueRejectedEvent';
 export * from './queueRejectedEventEvent';
 export * from './queueRejectedEventQueueRejectCode';
+export * from './sessionAlreadyConnectedErrorResponse';
 export * from './sessionConnectRequest';
+export * from './sessionNotConnectedErrorResponse';
 export * from './sessionStatusPayload';
 export * from './stateSnapshotPayload';
 export * from './stateSnapshotPayloadEquipment';
+export * from './stateSnapshotPayloadOrEmpty';
 export * from './successEnqueueResponse';
 export * from './successHealthResponse';
 export * from './successSessionStatusResponse';
 export * from './successStateSnapshotResponse';
 export * from './successSuggestionResponse';
 export * from './suggestionPayload';
+export * from './suggestionPayloadOrEmpty';
 export * from './terminalEvent';
 export * from './terminalEventEvent';
 export * from './terminalOutputEvent';
@@ -42,3 +50,4 @@ export * from './terminalSessionDisconnectedEvent';
 export * from './terminalSessionDisconnectedEventEvent';
 export * from './terminalSessionStatusEvent';
 export * from './terminalSessionStatusEventEvent';
+export * from './upstreamUnavailableErrorResponse';

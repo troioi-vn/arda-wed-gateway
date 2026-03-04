@@ -9,12 +9,17 @@
 import type {
   EnqueueCommandRequest,
   ErrorEnvelopeResponse,
+  InternalErrorResponse,
+  InvalidRequestErrorResponse,
+  SessionAlreadyConnectedErrorResponse,
   SessionConnectRequest,
+  SessionNotConnectedErrorResponse,
   SuccessEnqueueResponse,
   SuccessHealthResponse,
   SuccessSessionStatusResponse,
   SuccessStateSnapshotResponse,
-  SuccessSuggestionResponse
+  SuccessSuggestionResponse,
+  UpstreamUnavailableErrorResponse
 } from './model';
 
 
@@ -130,15 +135,30 @@ export type postSessionConnectResponse200 = {
   status: 200
 }
 
-export type postSessionConnectResponseDefault = {
-  data: ErrorEnvelopeResponse
-  status: Exclude<HTTPStatusCodes, 200>
+export type postSessionConnectResponse400 = {
+  data: InvalidRequestErrorResponse
+  status: 400
+}
+
+export type postSessionConnectResponse409 = {
+  data: SessionAlreadyConnectedErrorResponse
+  status: 409
+}
+
+export type postSessionConnectResponse500 = {
+  data: InternalErrorResponse
+  status: 500
+}
+
+export type postSessionConnectResponse502 = {
+  data: UpstreamUnavailableErrorResponse
+  status: 502
 }
     
 export type postSessionConnectResponseSuccess = (postSessionConnectResponse200) & {
   headers: Headers;
 };
-export type postSessionConnectResponseError = (postSessionConnectResponseDefault) & {
+export type postSessionConnectResponseError = (postSessionConnectResponse400 | postSessionConnectResponse409 | postSessionConnectResponse500 | postSessionConnectResponse502) & {
   headers: Headers;
 };
 
@@ -180,15 +200,20 @@ export type postSessionDisconnectResponse200 = {
   status: 200
 }
 
-export type postSessionDisconnectResponseDefault = {
-  data: ErrorEnvelopeResponse
-  status: Exclude<HTTPStatusCodes, 200>
+export type postSessionDisconnectResponse409 = {
+  data: SessionNotConnectedErrorResponse
+  status: 409
+}
+
+export type postSessionDisconnectResponse500 = {
+  data: InternalErrorResponse
+  status: 500
 }
     
 export type postSessionDisconnectResponseSuccess = (postSessionDisconnectResponse200) & {
   headers: Headers;
 };
-export type postSessionDisconnectResponseError = (postSessionDisconnectResponseDefault) & {
+export type postSessionDisconnectResponseError = (postSessionDisconnectResponse409 | postSessionDisconnectResponse500) & {
   headers: Headers;
 };
 
@@ -228,20 +253,13 @@ export type getSessionStatusResponse200 = {
   data: SuccessSessionStatusResponse
   status: 200
 }
-
-export type getSessionStatusResponseDefault = {
-  data: ErrorEnvelopeResponse
-  status: Exclude<HTTPStatusCodes, 200>
-}
     
 export type getSessionStatusResponseSuccess = (getSessionStatusResponse200) & {
   headers: Headers;
 };
-export type getSessionStatusResponseError = (getSessionStatusResponseDefault) & {
-  headers: Headers;
-};
+;
 
-export type getSessionStatusResponse = (getSessionStatusResponseSuccess | getSessionStatusResponseError)
+export type getSessionStatusResponse = (getSessionStatusResponseSuccess)
 
 export const getGetSessionStatusUrl = () => {
 
@@ -278,15 +296,15 @@ export type getStateSnapshotResponse200 = {
   status: 200
 }
 
-export type getStateSnapshotResponseDefault = {
-  data: ErrorEnvelopeResponse
-  status: Exclude<HTTPStatusCodes, 200>
+export type getStateSnapshotResponse500 = {
+  data: InternalErrorResponse
+  status: 500
 }
     
 export type getStateSnapshotResponseSuccess = (getStateSnapshotResponse200) & {
   headers: Headers;
 };
-export type getStateSnapshotResponseError = (getStateSnapshotResponseDefault) & {
+export type getStateSnapshotResponseError = (getStateSnapshotResponse500) & {
   headers: Headers;
 };
 
@@ -326,20 +344,13 @@ export type getSuggestionsLatestResponse200 = {
   data: SuccessSuggestionResponse
   status: 200
 }
-
-export type getSuggestionsLatestResponseDefault = {
-  data: ErrorEnvelopeResponse
-  status: Exclude<HTTPStatusCodes, 200>
-}
     
 export type getSuggestionsLatestResponseSuccess = (getSuggestionsLatestResponse200) & {
   headers: Headers;
 };
-export type getSuggestionsLatestResponseError = (getSuggestionsLatestResponseDefault) & {
-  headers: Headers;
-};
+;
 
-export type getSuggestionsLatestResponse = (getSuggestionsLatestResponseSuccess | getSuggestionsLatestResponseError)
+export type getSuggestionsLatestResponse = (getSuggestionsLatestResponseSuccess)
 
 export const getGetSuggestionsLatestUrl = () => {
 

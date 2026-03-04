@@ -6,10 +6,10 @@
 
  * OpenAPI spec version: 0.1.0
  */
-import type { SuggestionPayload } from './suggestionPayload';
+import type { SuggestionPayloadOrEmpty } from './suggestionPayloadOrEmpty';
 import type { Meta } from './meta';
 
 export interface SuccessSuggestionResponse {
-  data: SuggestionPayload;
+  data: SuggestionPayloadOrEmpty;
   meta: Meta;
 }
