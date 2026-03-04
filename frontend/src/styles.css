@@ -168,6 +168,42 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+.suggestion-status {
+  font-size: 0.9rem;
+  color: #cfb18b;
+}
+
+.suggestion-block {
+  border: 1px solid #73563a;
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(34, 24, 17, 0.75);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggestion-reason,
+.suggestion-outcome {
+  font-size: 0.92rem;
+}
+
+.suggestion-meta {
+  font-size: 0.82rem;
+  color: #c0a280;
+}
+
+.suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.suggestion-button {
+  border-color: #9e764a;
+  background: linear-gradient(180deg, #7f5d39 0%, #5d4128 100%);
+}
+
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;

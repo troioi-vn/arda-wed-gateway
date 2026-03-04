@@ -4,6 +4,11 @@ coverage/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/tsconfig.*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/orval.config.js
+frontend/orval.config.d.ts
 
 backend/bin/
 
