@@ -197,4 +197,21 @@ describe("App suggestions", () => {
 
     expect(await screen.findByText("> look")).toBeInTheDocument();
   });
+
+  it("enqueues temporary trigger actions when trigger text appears in terminal output", async () => {
+    render(<App />);
+
+    const ws = MockWebSocket.instances[0];
+    act(() => {
+      ws.emitMessage({
+        event: "terminal.output",
+        session_id: "s-1",
+        text: "\u001b[36mВы проголодались\u001b[0m",
+      });
+    });
+
+    await waitFor(() => expect(postCommandsEnqueue).toHaveBeenCalledTimes(2));
+    expect(postCommandsEnqueue).toHaveBeenNthCalledWith(1, { command: "взять пирог сумка" });
+    expect(postCommandsEnqueue).toHaveBeenNthCalledWith(2, { command: "есть пирог" });
+  });
 });

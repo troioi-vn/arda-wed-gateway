@@ -6,6 +6,7 @@ import {
   postSessionDisconnect,
 } from "./lib/api/generated/gateway";
 import { ErrorBodyCode } from "./lib/api/generated/model";
+import tmpTriggersRaw from "./tmp-triggers.json";
 
 type TerminalEvent = {
   event: string;
@@ -31,6 +32,11 @@ type SuggestionView = {
 };
 
 type SuggestionStatus = "idle" | "loading" | "ready" | "stale" | "error";
+type TmpTrigger = {
+  id: string;
+  trigger: string;
+  actions: string[];
+};
 
 const DEFAULT_HOST = "86.110.194.3";
 const DEFAULT_PORT = 7000;
@@ -81,6 +87,8 @@ const ANSI_BG_COLORS: Record<number, string> = {
 };
 
 const ANSI_RESET_STATE: AnsiState = { bold: false, fg: null, bg: null };
+const ANSI_SGR_PATTERN = /\x1b\[[0-9;]*m/g;
+const TMP_TRIGGERS = normalizeTmpTriggers(tmpTriggersRaw);
 
 function App() {
   const [sessionID, setSessionID] = useState("");
@@ -104,6 +112,8 @@ function App() {
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const toastSeqRef = useRef(0);
   const suggestionRef = useRef<SuggestionView | null>(null);
+  const triggerCommandsRef = useRef<string[]>([]);
+  const processingTriggerQueueRef = useRef(false);
 
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -156,6 +166,7 @@ function App() {
           break;
         case "terminal.output":
           appendLine(payload.text ?? "");
+          queueTemporaryTriggers(payload.text ?? "");
           break;
         case "queue.accepted":
           setInlineStatus(`Queued (${payload.queue_depth ?? 0}/${payload.queue_max ?? 20})`);
@@ -337,6 +348,70 @@ function App() {
     } finally {
       setSendingCommand(false);
     }
+  }
+
+  function queueTemporaryTriggers(rawOutput: string) {
+    const normalizedOutput = stripAnsi(rawOutput);
+    if (!normalizedOutput) {
+      return;
+    }
+
+    const matchedTriggers = TMP_TRIGGERS.filter((candidate) => normalizedOutput.includes(candidate.trigger));
+    if (matchedTriggers.length === 0) {
+      return;
+    }
+
+    for (const trigger of matchedTriggers) {
+      for (const command of trigger.actions) {
+        triggerCommandsRef.current.push(command);
+      }
+    }
+    void flushTriggerQueue();
+  }
+
+  async function flushTriggerQueue(): Promise<void> {
+    if (processingTriggerQueueRef.current) {
+      return;
+    }
+    processingTriggerQueueRef.current = true;
+
+    try {
+      while (triggerCommandsRef.current.length > 0) {
+        const nextCommand = triggerCommandsRef.current.shift();
+        if (!nextCommand) {
+          continue;
+        }
+        await enqueueCommandFromTrigger(nextCommand);
+      }
+    } finally {
+      processingTriggerQueueRef.current = false;
+    }
+  }
+
+  async function enqueueCommandFromTrigger(command: string): Promise<void> {
+    const response = await postCommandsEnqueue({ command });
+    if (response.status === 200) {
+      setQueueDepth(response.data.data.queue_depth);
+      setQueueMax(response.data.data.queue_max);
+      setInlineStatus(`Trigger queued (${response.data.data.queue_depth}/${response.data.data.queue_max})`);
+      return;
+    }
+
+    const queueFull = response.data.error?.code === ErrorBodyCode.QUEUE_FULL;
+    if (queueFull) {
+      const details = response.data.error?.details as
+        | { queue_depth?: number; queue_max?: number }
+        | undefined;
+      const nextDepth = details?.queue_depth ?? queueDepth;
+      const nextMax = details?.queue_max ?? queueMax;
+      setQueueDepth(nextDepth);
+      setQueueMax(nextMax);
+      setInlineStatus(`Queue full (${nextDepth}/${nextMax})`);
+      pushToast(`QUEUE_FULL: ${nextDepth}/${nextMax} pending`);
+      return;
+    }
+
+    pushToast(response.data.error?.message ?? "Failed to enqueue trigger command");
   }
 
   function appendLine(line: string) {
@@ -637,3 +712,42 @@ function isSuggestionPayload(value: unknown): value is {
 }
 
 export default App;
+
+function normalizeTmpTriggers(rawValue: unknown): TmpTrigger[] {
+  if (!rawValue || typeof rawValue !== "object") {
+    return [];
+  }
+
+  const root = rawValue as { triggers?: unknown };
+  if (!Array.isArray(root.triggers)) {
+    return [];
+  }
+
+  return root.triggers.flatMap((entry): TmpTrigger[] => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+
+    const trigger = entry as { id?: unknown; trigger?: unknown; actions?: unknown };
+    if (
+      typeof trigger.id !== "string" ||
+      typeof trigger.trigger !== "string" ||
+      !Array.isArray(trigger.actions) ||
+      !trigger.actions.every((action) => typeof action === "string")
+    ) {
+      return [];
+    }
+
+    const trimmedNeedle = trigger.trigger.trim();
+    const filteredActions = trigger.actions.map((action) => action.trim()).filter((action) => action.length > 0);
+    if (trimmedNeedle.length === 0 || filteredActions.length === 0) {
+      return [];
+    }
+
+    return [{ id: trigger.id, trigger: trimmedNeedle, actions: filteredActions }];
+  });
+}
+
+function stripAnsi(line: string): string {
+  return line.replace(ANSI_SGR_PATTERN, "");
+}

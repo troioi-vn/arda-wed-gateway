@@ -14,3 +14,5 @@ backend/bin/
 
 .env
 .DS_Store
+
+frontend/src/tmp-triggers.json

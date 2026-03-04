@@ -25,6 +25,7 @@ Milestone 1 progress:
 - M1-08 baseline shipped: frontend wired to `/api/v0/ws/terminal` with queue metadata and `QUEUE_FULL` inline + toast UX.
 - M1-09 shipped (2026-03-05): OpenAPI v0 now matches backend session/state/suggestions envelopes and frontend HTTP usage is Orval-generated.
 - M1-10 shipped (2026-03-05): integration hardening completed (queue burst pacing/reject tests, reconnect no-replay checks, fixture-backed snapshot regression, full backend/frontend test gate pass).
+- M1-11 shipped (2026-03-05): temporary frontend trigger runner reads `frontend/src/tmp-triggers.json` and enqueues mapped commands when trigger text appears in terminal output.
 - M1-15 groundwork shipped: metrics include send-latency histogram and dropped-unsent counters per session.
 
 Upcoming planning focus (post-M1):
@@ -82,6 +83,7 @@ Consistency rule:
 - Queue: 500ms send interval, max depth 20, reject new when full.
 - Reconnect policy: no automatic replay of unsent queued commands after reconnect.
 - Suggestion freshness: short debounce window and stale-response discard.
+- Temporary UI trigger policy: substring match against ANSI-stripped terminal output, then enqueue matched trigger `actions` sequentially.
 
 ## Milestone Outline
 - M1: Playable Gateway + Suggestions.

@@ -48,6 +48,7 @@ Planning style: iterative, high-detail, capability-based milestones
 28. Developer workflow is normalized around `Makefile` task entrypoints for run/test/generate/compose.
 29. WebSocket runtime contract now includes explicit `session.status` bootstrap event for frontend hydration.
 30. Metrics baseline now includes queue send latency histogram and dropped-unsent per-session counter labels.
+31. Temporary UI-side trigger support is enabled via `frontend/src/tmp-triggers.json` (substring text match -> enqueue action list in order).
 
 ---
 
@@ -370,6 +371,10 @@ Ordered issue-level implementation plan:
     - Added fixture-driven state snapshot regression checks for location/prompt/status/equipment/updated_at fields.
     - Passed full quality gate: `cd backend && go test ./...` and `cd frontend && npm test`.
     - Confirmed MVP operational defaults: queue interval/depth, reconnect drop policy, suggestion freshness debounce/stale-drop behavior.
+11. **M1-11: Temporary frontend trigger runner** *(completed 2026-03-05)*
+    - Frontend reads `frontend/src/tmp-triggers.json` and checks incoming `terminal.output` text for configured trigger substrings.
+    - Matching trigger `actions` are enqueued in listed order via the existing command enqueue API.
+    - Trigger matching uses ANSI-stripped output text to avoid color-code false negatives.
 
 ---
 

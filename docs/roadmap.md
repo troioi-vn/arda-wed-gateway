@@ -39,6 +39,7 @@ Outcome:
 - SQLite runtime defaults support concurrent read/write usage (WAL + controlled writes).
 - M1-09 shipped (2026-03-05): OpenAPI v0 and Orval-generated frontend client are synchronized with backend session/state/suggestions contracts.
 - M1-10 shipped (2026-03-05): integration hardening pass completed (WS smoke + queue burst/reject + reconnect no-replay + fixture-backed snapshot regression + release checklist).
+- M1-11 shipped (2026-03-05): temporary frontend trigger runner reads `frontend/src/tmp-triggers.json` and enqueues mapped commands on terminal text matches.
 
 Exit criteria:
 - Stable connect/send/receive loop in browser.
