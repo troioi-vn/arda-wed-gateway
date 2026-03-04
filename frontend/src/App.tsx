@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   getSuggestionsLatest,
   postCommandsEnqueue,
@@ -36,6 +36,52 @@ const DEFAULT_HOST = "86.110.194.3";
 const DEFAULT_PORT = 7000;
 const SUGGESTION_POLL_INTERVAL_MS = 1600;
 
+type AnsiState = {
+  bold: boolean;
+  fg: string | null;
+  bg: string | null;
+};
+
+const ANSI_FG_COLORS: Record<number, string> = {
+  30: "#0f0f0f",
+  31: "#e06c75",
+  32: "#98c379",
+  33: "#e5c07b",
+  34: "#61afef",
+  35: "#c678dd",
+  36: "#56b6c2",
+  37: "#d7dae0",
+  90: "#5c6370",
+  91: "#f7768e",
+  92: "#9ece6a",
+  93: "#e0af68",
+  94: "#7aa2f7",
+  95: "#bb9af7",
+  96: "#7dcfff",
+  97: "#f4f4f8",
+};
+
+const ANSI_BG_COLORS: Record<number, string> = {
+  40: "#0f0f0f",
+  41: "#742f3b",
+  42: "#39522f",
+  43: "#5f4f2d",
+  44: "#2f4662",
+  45: "#4d3562",
+  46: "#2f575d",
+  47: "#b9bec8",
+  100: "#434852",
+  101: "#9e4b5a",
+  102: "#557749",
+  103: "#8b7545",
+  104: "#4f668d",
+  105: "#6f568f",
+  106: "#4b7b80",
+  107: "#d9dde5",
+};
+
+const ANSI_RESET_STATE: AnsiState = { bold: false, fg: null, bg: null };
+
 function App() {
   const [sessionID, setSessionID] = useState("");
   const [connected, setConnected] = useState(false);
@@ -51,9 +97,11 @@ function App() {
   const [suggestionStatus, setSuggestionStatus] = useState<SuggestionStatus>("idle");
   const [suggestionError, setSuggestionError] = useState("");
   const [sendingCommand, setSendingCommand] = useState(false);
+  const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const terminalEndRef = useRef<HTMLDivElement | null>(null);
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
   const toastSeqRef = useRef(0);
   const suggestionRef = useRef<SuggestionView | null>(null);
 
@@ -111,6 +159,7 @@ function App() {
           break;
         case "queue.accepted":
           setInlineStatus(`Queued (${payload.queue_depth ?? 0}/${payload.queue_max ?? 20})`);
+          appendLine(formatSentCommandEcho(payload.text ?? ""));
           break;
         case "queue.rejected":
           setInlineStatus(`Queue full (${payload.queue_depth ?? 0}/${payload.queue_max ?? 20})`);
@@ -236,8 +285,8 @@ function App() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const command = inputValue.trim();
-    if (!command || sendingCommand) {
+    const command = inputValue;
+    if (sendingCommand) {
       return;
     }
 
@@ -245,6 +294,10 @@ function App() {
     if (sent) {
       setInputValue("");
     }
+
+    window.requestAnimationFrame(() => {
+      commandInputRef.current?.focus();
+    });
   }
 
   async function handleSuggestionClick(command: string) {
@@ -320,17 +373,18 @@ function App() {
         <div className="terminal-body">
           {terminalLines.map((line, index) => (
             <div className="terminal-line" key={`${index}-${line.slice(0, 16)}`}>
-              {line}
+              {renderAnsiLine(line)}
             </div>
           ))}
           <div ref={terminalEndRef} />
         </div>
         <form className="command-form" onSubmit={handleSubmit}>
           <input
+            ref={commandInputRef}
             className="command-input"
             value={inputValue}
             onChange={(event) => setInputValue(event.target.value)}
-            placeholder={connected ? "Type command and press Enter" : "Connect session to send"}
+            placeholder={connected ? "Type command or press Enter to send blank line" : "Connect session to send"}
             disabled={!connected || sendingCommand}
           />
           <button type="submit" disabled={!connected || sendingCommand}>
@@ -363,48 +417,65 @@ function App() {
           </div>
         </div>
       </aside>
-      <section className="suggestion-pane">
-        <header className="pane-header">Suggestions + Queue</header>
-        <div className="panel-body queue-panel">
-          <div>Connection: {connected ? "connected" : "disconnected"}</div>
-          <div>Queue: {queueLabel}</div>
-          <div className={inlineStatus.includes("Queue full") ? "inline-status error" : "inline-status"}>
-            {inlineStatus}
+      <section className={`suggestion-pane ${isSuggestionOpen ? "open" : "collapsed"}`}>
+        <header className="pane-header">
+          <span>Suggestions + Queue</span>
+          <div className="pane-header-actions">
+            <span className="meta">Queue {queueLabel}</span>
+            <button
+              type="button"
+              className="collapse-toggle"
+              onClick={() => setIsSuggestionOpen((current) => !current)}
+              aria-expanded={isSuggestionOpen}
+            >
+              {isSuggestionOpen ? "Collapse" : "Expand"}
+            </button>
           </div>
-
-          <div className="suggestion-status" data-testid="suggestion-status">
-            {renderSuggestionStatus(suggestionStatus, suggestionError, suggestion)}
-          </div>
-
-          {suggestion && (
-            <div className="suggestion-block">
-              <div className="suggestion-reason">Reason: {suggestion.reason}</div>
-              <div className="suggestion-outcome">Expected: {suggestion.expectedOutcome}</div>
-              <div className="suggestion-meta">Generated: {new Date(suggestion.generatedAt).toLocaleTimeString()}</div>
-              <div className="suggestion-actions">
-                {suggestion.commands.map((command, index) => (
-                  <button
-                    key={`${command}-${index}`}
-                    type="button"
-                    className="suggestion-button"
-                    onClick={() => handleSuggestionClick(command)}
-                    disabled={!connected || sendingCommand}
-                  >
-                    {command}
-                  </button>
-                ))}
-              </div>
+        </header>
+        {isSuggestionOpen && (
+          <div className="panel-body queue-panel">
+            <div>Connection: {connected ? "connected" : "disconnected"}</div>
+            <div>Queue: {queueLabel}</div>
+            <div className={inlineStatus.includes("Queue full") ? "inline-status error" : "inline-status"}>
+              {inlineStatus}
             </div>
-          )}
 
-          <div className="toast-stack">
-            {toasts.map((toast) => (
-              <div key={toast.id} className="toast">
-                {toast.message}
+            <div className="suggestion-status" data-testid="suggestion-status">
+              {renderSuggestionStatus(suggestionStatus, suggestionError, suggestion)}
+            </div>
+
+            {suggestion && (
+              <div className="suggestion-block">
+                <div className="suggestion-reason">Reason: {suggestion.reason}</div>
+                <div className="suggestion-outcome">Expected: {suggestion.expectedOutcome}</div>
+                <div className="suggestion-meta">
+                  Generated: {new Date(suggestion.generatedAt).toLocaleTimeString()}
+                </div>
+                <div className="suggestion-actions">
+                  {suggestion.commands.map((command, index) => (
+                    <button
+                      key={`${command}-${index}`}
+                      type="button"
+                      className="suggestion-button"
+                      onClick={() => handleSuggestionClick(command)}
+                      disabled={!connected || sendingCommand}
+                    >
+                      {command}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ))}
+            )}
+
+            <div className="toast-stack">
+              {toasts.map((toast) => (
+                <div key={toast.id} className="toast">
+                  {toast.message}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </section>
     </main>
   );
@@ -428,6 +499,115 @@ function renderSuggestionStatus(
     return "Suggestions ready";
   }
   return "No suggestions yet";
+}
+
+function formatSentCommandEcho(command: string): string {
+  if (command.length === 0) {
+    return ">";
+  }
+  return `> ${command}`;
+}
+
+function renderAnsiLine(line: string): ReactNode {
+  const matches = [...line.matchAll(/\x1b\[([0-9;]*)m/g)];
+  if (matches.length === 0) {
+    return line;
+  }
+
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let state: AnsiState = { ...ANSI_RESET_STATE };
+
+  for (let i = 0; i < matches.length; i += 1) {
+    const match = matches[i];
+    const matchText = match[0];
+    const matchIndex = match.index ?? -1;
+    if (matchIndex < cursor) {
+      continue;
+    }
+
+    const chunk = line.slice(cursor, matchIndex);
+    if (chunk) {
+      parts.push(
+        <span key={`chunk-${i}-${cursor}`} style={ansiStateToStyle(state)}>
+          {chunk}
+        </span>
+      );
+    }
+
+    state = applyAnsiCodes(state, match[1] ?? "");
+    cursor = matchIndex + matchText.length;
+  }
+
+  const tail = line.slice(cursor);
+  if (tail) {
+    parts.push(
+      <span key={`tail-${cursor}`} style={ansiStateToStyle(state)}>
+        {tail}
+      </span>
+    );
+  }
+
+  return <>{parts}</>;
+}
+
+function applyAnsiCodes(current: AnsiState, codesRaw: string): AnsiState {
+  const next: AnsiState = { ...current };
+  const codes =
+    codesRaw.trim().length === 0
+      ? [0]
+      : codesRaw
+          .split(";")
+          .map((part) => Number(part))
+          .filter((code) => Number.isInteger(code));
+
+  for (const code of codes) {
+    if (code === 0) {
+      next.bold = false;
+      next.fg = null;
+      next.bg = null;
+      continue;
+    }
+
+    if (code === 1) {
+      next.bold = true;
+      continue;
+    }
+
+    if (code === 22) {
+      next.bold = false;
+      continue;
+    }
+
+    if (code === 39) {
+      next.fg = null;
+      continue;
+    }
+
+    if (code === 49) {
+      next.bg = null;
+      continue;
+    }
+
+    if (ANSI_FG_COLORS[code]) {
+      next.fg = ANSI_FG_COLORS[code];
+      continue;
+    }
+
+    if (ANSI_BG_COLORS[code]) {
+      next.bg = ANSI_BG_COLORS[code];
+    }
+  }
+
+  return next;
+}
+
+function ansiStateToStyle(state: AnsiState): CSSProperties {
+  return {
+    color: state.fg ?? undefined,
+    backgroundColor: state.bg ?? undefined,
+    fontWeight: state.bold ? 700 : undefined,
+  };
 }
 
 function isSuggestionPayload(value: unknown): value is {
