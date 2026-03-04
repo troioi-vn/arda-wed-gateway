@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -27,15 +28,15 @@ type errorResponse struct {
 	Meta  meta      `json:"meta"`
 }
 
-func writeSuccess(w http.ResponseWriter, status int, requestID string, data any) {
-	writeJSON(w, status, successResponse{
+func writeSuccess(logger *slog.Logger, w http.ResponseWriter, status int, requestID string, data any) {
+	writeJSON(logger, w, status, requestID, successResponse{
 		Data: data,
 		Meta: newMeta(requestID),
 	})
 }
 
-func writeError(w http.ResponseWriter, status int, requestID, code, message string, details map[string]any) {
-	writeJSON(w, status, errorResponse{
+func writeError(logger *slog.Logger, w http.ResponseWriter, status int, requestID, code, message string, details map[string]any) {
+	writeJSON(logger, w, status, requestID, errorResponse{
 		Error: errorBody{
 			Code:    code,
 			Message: message,
@@ -45,10 +46,12 @@ func writeError(w http.ResponseWriter, status int, requestID, code, message stri
 	})
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
+func writeJSON(logger *slog.Logger, w http.ResponseWriter, status int, requestID string, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		logger.Warn("http response json write failed", "request_id", requestID, "status", status, "error", err.Error())
+	}
 }
 
 func newMeta(requestID string) meta {

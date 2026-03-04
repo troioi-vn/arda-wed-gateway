@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"bufio"
+	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -17,10 +20,27 @@ type Router struct {
 	cfg         config.Config
 	logger      *slog.Logger
 	counter     uint64
-	manager     *gateway.Manager
+	manager     sessionManager
 	metrics     *gateway.Metrics
-	state       *state.Service
-	suggestions *suggestions.Service
+	state       stateSnapshotter
+	suggestions suggestionProvider
+}
+
+type sessionManager interface {
+	Connect(host string, port int) (gateway.Status, error)
+	Disconnect() (gateway.Status, int, error)
+	Status() gateway.Status
+	Enqueue(command string) (gateway.Status, error)
+	Hub() *gateway.Hub
+	BuildStatusEvent() gateway.TerminalEvent
+}
+
+type stateSnapshotter interface {
+	Snapshot() (state.Snapshot, bool, error)
+}
+
+type suggestionProvider interface {
+	Latest() (suggestions.Suggestion, bool)
 }
 
 func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
@@ -62,7 +82,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("POST /api/v0/commands/enqueue", r.handleEnqueueCommand)
 	mux.HandleFunc("GET /api/v0/ws/terminal", r.handleTerminalWS)
 	mux.HandleFunc("GET /metrics", r.handleMetrics)
-	return withRequestLogging(r.logger, mux)
+	return withRequestLogging(r.logger, r.nextRequestID, mux)
 }
 
 func (r *Router) nextRequestID() string {
@@ -70,11 +90,91 @@ func (r *Router) nextRequestID() string {
 	return time.Now().UTC().Format("20060102T150405.000Z07:00") + "-" + itoa(seq)
 }
 
-func withRequestLogging(logger *slog.Logger, next http.Handler) http.Handler {
+func (r *Router) requestID(req *http.Request) string {
+	if requestID := requestIDFromContext(req.Context()); requestID != "" {
+		return requestID
+	}
+	return r.nextRequestID()
+}
+
+type requestIDKey struct{}
+
+func withRequestID(ctx context.Context, requestID string) context.Context {
+	return context.WithValue(ctx, requestIDKey{}, requestID)
+}
+
+func requestIDFromContext(ctx context.Context) string {
+	requestID, _ := ctx.Value(requestIDKey{}).(string)
+	return requestID
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func newStatusRecorder(w http.ResponseWriter) *statusRecorder {
+	return &statusRecorder{ResponseWriter: w}
+}
+
+func (r *statusRecorder) WriteHeader(statusCode int) {
+	r.status = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *statusRecorder) Write(data []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(data)
+	r.bytes += n
+	return n, err
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	if r.status == 0 {
+		r.status = http.StatusSwitchingProtocols
+	}
+	return hijacker.Hijack()
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func withRequestLogging(logger *slog.Logger, nextRequestID func() string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		requestID := nextRequestID()
+		req = req.WithContext(withRequestID(req.Context(), requestID))
 		start := time.Now()
-		next.ServeHTTP(w, req)
-		logger.Debug("http request completed", "method", req.Method, "path", req.URL.Path, "elapsed_ms", time.Since(start).Milliseconds())
+		rec := newStatusRecorder(w)
+		next.ServeHTTP(rec, req)
+
+		status := rec.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+
+		logAttrs := []any{
+			"request_id", requestID,
+			"method", req.Method,
+			"path", req.URL.Path,
+			"status", status,
+			"bytes", rec.bytes,
+			"elapsed_ms", time.Since(start).Milliseconds(),
+		}
+		if status >= http.StatusBadRequest {
+			logger.Info("http request completed", logAttrs...)
+			return
+		}
+		logger.Debug("http request completed", logAttrs...)
 	})
 }
 

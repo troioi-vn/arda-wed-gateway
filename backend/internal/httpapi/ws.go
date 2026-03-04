@@ -11,22 +11,23 @@ import (
 
 func (r *Router) handleTerminalWS(w http.ResponseWriter, req *http.Request) {
 	if !headerContainsToken(req.Header, "Connection", "upgrade") || !headerContainsToken(req.Header, "Upgrade", "websocket") {
-		requestID := r.nextRequestID()
-		writeError(w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "websocket upgrade required", nil)
+		requestID := r.requestID(req)
+		writeError(r.logger, w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "websocket upgrade required", nil)
 		return
 	}
 
 	key := strings.TrimSpace(req.Header.Get("Sec-WebSocket-Key"))
 	if key == "" {
-		requestID := r.nextRequestID()
-		writeError(w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "missing Sec-WebSocket-Key", nil)
+		requestID := r.requestID(req)
+		writeError(r.logger, w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "missing Sec-WebSocket-Key", nil)
 		return
 	}
 
 	hijacker, ok := w.(http.Hijacker)
 	if !ok {
-		requestID := r.nextRequestID()
-		writeError(w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "websocket upgrade unsupported", nil)
+		requestID := r.requestID(req)
+		r.logger.Error("websocket upgrade unsupported", "request_id", requestID)
+		writeError(r.logger, w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "websocket upgrade unsupported", nil)
 		return
 	}
 

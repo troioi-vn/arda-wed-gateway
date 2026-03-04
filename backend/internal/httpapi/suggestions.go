@@ -3,13 +3,13 @@ package httpapi
 import "net/http"
 
 func (r *Router) handleSuggestionsLatest(w http.ResponseWriter, req *http.Request) {
-	requestID := r.nextRequestID()
+	requestID := r.requestID(req)
 
 	suggestion, found := r.suggestions.Latest()
 	if !found {
-		writeSuccess(w, http.StatusOK, requestID, map[string]any{})
+		writeSuccess(r.logger, w, http.StatusOK, requestID, map[string]any{})
 		return
 	}
 
-	writeSuccess(w, http.StatusOK, requestID, suggestion)
+	writeSuccess(r.logger, w, http.StatusOK, requestID, suggestion)
 }

@@ -11,8 +11,8 @@ type healthPayload struct {
 }
 
 func (r *Router) handleHealth(w http.ResponseWriter, req *http.Request) {
-	requestID := r.nextRequestID()
-	writeSuccess(w, http.StatusOK, requestID, healthPayload{
+	requestID := r.requestID(req)
+	writeSuccess(r.logger, w, http.StatusOK, requestID, healthPayload{
 		Status:  "ok",
 		Version: r.cfg.BuildVersion,
 		Commit:  r.cfg.BuildCommit,

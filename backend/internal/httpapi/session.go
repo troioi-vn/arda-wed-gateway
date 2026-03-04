@@ -37,16 +37,16 @@ type enqueuePayload struct {
 }
 
 func (r *Router) handleSessionConnect(w http.ResponseWriter, req *http.Request) {
-	requestID := r.nextRequestID()
+	requestID := r.requestID(req)
 
 	var payload sessionConnectRequest
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		writeError(w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "invalid JSON body", nil)
+		writeError(r.logger, w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "invalid JSON body", nil)
 		return
 	}
 
 	if strings.TrimSpace(payload.Host) == "" || payload.Port <= 0 {
-		writeError(w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "host and port are required", nil)
+		writeError(r.logger, w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "host and port are required", nil)
 		return
 	}
 
@@ -54,58 +54,60 @@ func (r *Router) handleSessionConnect(w http.ResponseWriter, req *http.Request) 
 	if err != nil {
 		switch {
 		case errors.Is(err, gateway.ErrSessionAlreadyConnected):
-			writeError(w, http.StatusConflict, requestID, "SESSION_ALREADY_CONNECTED", "session is already connected", map[string]any{
+			writeError(r.logger, w, http.StatusConflict, requestID, "SESSION_ALREADY_CONNECTED", "session is already connected", map[string]any{
 				"session_id": status.SessionID,
 			})
 			return
 		case errors.Is(err, gateway.ErrUpstreamUnavailable):
-			writeError(w, http.StatusBadGateway, requestID, "UPSTREAM_UNAVAILABLE", "failed to reach upstream host", map[string]any{
+			writeError(r.logger, w, http.StatusBadGateway, requestID, "UPSTREAM_UNAVAILABLE", "failed to reach upstream host", map[string]any{
 				"host": payload.Host,
 				"port": payload.Port,
 			})
 			return
 		}
 
-		writeError(w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "failed to connect session", nil)
+		r.logger.Error("session connect failed", "request_id", requestID, "host", payload.Host, "port", payload.Port, "error", err.Error())
+		writeError(r.logger, w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "failed to connect session", nil)
 		return
 	}
 
 	r.logger.Info("session connect request handled", "request_id", requestID, "session_id", status.SessionID)
-	writeSuccess(w, http.StatusOK, requestID, toSessionStatusPayload(status))
+	writeSuccess(r.logger, w, http.StatusOK, requestID, toSessionStatusPayload(status))
 }
 
 func (r *Router) handleSessionDisconnect(w http.ResponseWriter, req *http.Request) {
-	requestID := r.nextRequestID()
+	requestID := r.requestID(req)
 
 	status, dropped, err := r.manager.Disconnect()
 	if err != nil {
 		if errors.Is(err, gateway.ErrSessionNotConnected) {
-			writeError(w, http.StatusConflict, requestID, "SESSION_NOT_CONNECTED", "session is not connected", map[string]any{
+			writeError(r.logger, w, http.StatusConflict, requestID, "SESSION_NOT_CONNECTED", "session is not connected", map[string]any{
 				"session_id": status.SessionID,
 			})
 			return
 		}
 
-		writeError(w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "failed to disconnect session", nil)
+		r.logger.Error("session disconnect failed", "request_id", requestID, "session_id", status.SessionID, "error", err.Error())
+		writeError(r.logger, w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "failed to disconnect session", nil)
 		return
 	}
 
 	r.logger.Info("session disconnect request handled", "request_id", requestID, "session_id", status.SessionID, "dropped_unsent", dropped)
-	writeSuccess(w, http.StatusOK, requestID, toSessionStatusPayload(status))
+	writeSuccess(r.logger, w, http.StatusOK, requestID, toSessionStatusPayload(status))
 }
 
 func (r *Router) handleSessionStatus(w http.ResponseWriter, req *http.Request) {
-	requestID := r.nextRequestID()
+	requestID := r.requestID(req)
 	status := r.manager.Status()
-	writeSuccess(w, http.StatusOK, requestID, toSessionStatusPayload(status))
+	writeSuccess(r.logger, w, http.StatusOK, requestID, toSessionStatusPayload(status))
 }
 
 func (r *Router) handleEnqueueCommand(w http.ResponseWriter, req *http.Request) {
-	requestID := r.nextRequestID()
+	requestID := r.requestID(req)
 
 	var payload enqueueRequest
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		writeError(w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "invalid JSON body", nil)
+		writeError(r.logger, w, http.StatusBadRequest, requestID, "INVALID_REQUEST", "invalid JSON body", nil)
 		return
 	}
 
@@ -113,22 +115,23 @@ func (r *Router) handleEnqueueCommand(w http.ResponseWriter, req *http.Request) 
 	if err != nil {
 		switch {
 		case errors.Is(err, gateway.ErrSessionNotConnected):
-			writeError(w, http.StatusConflict, requestID, "SESSION_NOT_CONNECTED", "session is not connected", map[string]any{
+			writeError(r.logger, w, http.StatusConflict, requestID, "SESSION_NOT_CONNECTED", "session is not connected", map[string]any{
 				"session_id": status.SessionID,
 			})
 		case errors.Is(err, gateway.ErrQueueFull):
-			writeError(w, http.StatusTooManyRequests, requestID, "QUEUE_FULL", "command queue is full", map[string]any{
+			writeError(r.logger, w, http.StatusTooManyRequests, requestID, "QUEUE_FULL", "command queue is full", map[string]any{
 				"session_id":  status.SessionID,
 				"queue_depth": status.QueueDepth,
 				"queue_max":   status.QueueMax,
 			})
 		default:
-			writeError(w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "failed to enqueue command", nil)
+			r.logger.Error("command enqueue failed", "request_id", requestID, "session_id", status.SessionID, "error", err.Error())
+			writeError(r.logger, w, http.StatusInternalServerError, requestID, "INTERNAL_ERROR", "failed to enqueue command", nil)
 		}
 		return
 	}
 
-	writeSuccess(w, http.StatusOK, requestID, enqueuePayload{
+	writeSuccess(r.logger, w, http.StatusOK, requestID, enqueuePayload{
 		Accepted:   true,
 		QueueDepth: status.QueueDepth,
 		QueueMax:   status.QueueMax,
@@ -146,6 +149,8 @@ func (r *Router) handleMetrics(w http.ResponseWriter, req *http.Request) {
 			"gateway_queue_depth %d\n"+
 			"# TYPE gateway_queue_sent_total counter\n"+
 			"gateway_queue_sent_total %d\n"+
+			"# TYPE gateway_queue_send_failed_total counter\n"+
+			"gateway_queue_send_failed_total %d\n"+
 			"# TYPE gateway_queue_rejected_total counter\n"+
 			"gateway_queue_rejected_total %d\n"+
 			"# TYPE gateway_queue_dropped_total counter\n"+
@@ -159,6 +164,7 @@ func (r *Router) handleMetrics(w http.ResponseWriter, req *http.Request) {
 		snapshot.WSConnections,
 		snapshot.QueueDepth,
 		snapshot.QueueSentTotal,
+		snapshot.QueueSendFailedTotal,
 		snapshot.QueueRejectedTotal,
 		snapshot.QueueDroppedTotal,
 		snapshot.EventsBroadcastTotal,
