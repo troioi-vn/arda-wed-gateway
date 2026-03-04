@@ -12,8 +12,9 @@ import type { TerminalSessionDisconnectedEvent } from './terminalSessionDisconne
 import type { TerminalOutputEvent } from './terminalOutputEvent';
 import type { QueueAcceptedEvent } from './queueAcceptedEvent';
 import type { QueueRejectedEvent } from './queueRejectedEvent';
+import type { QueueSendFailedEvent } from './queueSendFailedEvent';
 
 /**
  * Runtime WebSocket event envelope for terminal stream updates.
  */
-export type TerminalEvent = TerminalSessionStatusEvent | TerminalSessionConnectedEvent | TerminalSessionDisconnectedEvent | TerminalOutputEvent | QueueAcceptedEvent | QueueRejectedEvent;
+export type TerminalEvent = TerminalSessionStatusEvent | TerminalSessionConnectedEvent | TerminalSessionDisconnectedEvent | TerminalOutputEvent | QueueAcceptedEvent | QueueRejectedEvent | QueueSendFailedEvent;

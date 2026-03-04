@@ -77,6 +77,9 @@ func TestMetricsExposeLatencyAndDroppedBySession(t *testing.T) {
 	if !strings.Contains(metrics, "gateway_queue_send_latency_seconds_bucket") {
 		t.Fatalf("expected latency histogram bucket metric")
 	}
+	if !strings.Contains(metrics, "gateway_queue_send_failed_total") {
+		t.Fatalf("expected queue send failed counter metric")
+	}
 	if !strings.Contains(metrics, `gateway_queue_dropped_unsent_total{session_id="s-1"} 1`) {
 		t.Fatalf("expected dropped-unsent metric with session label, got: %s", metrics)
 	}

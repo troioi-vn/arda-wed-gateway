@@ -26,6 +26,8 @@ export * from './queueFullErrorResponse';
 export * from './queueRejectedEvent';
 export * from './queueRejectedEventEvent';
 export * from './queueRejectedEventQueueRejectCode';
+export * from './queueSendFailedEvent';
+export * from './queueSendFailedEventEvent';
 export * from './sessionAlreadyConnectedErrorResponse';
 export * from './sessionConnectRequest';
 export * from './sessionNotConnectedErrorResponse';

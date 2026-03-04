@@ -13,6 +13,7 @@ type Metrics struct {
 	wsConnections        atomic.Int64
 	queueDepth           atomic.Int64
 	queueSentTotal       atomic.Int64
+	queueSendFailedTotal atomic.Int64
 	queueRejectedTotal   atomic.Int64
 	queueDroppedTotal    atomic.Int64
 	eventsBroadcastTotal atomic.Int64
@@ -34,6 +35,7 @@ type MetricsSnapshot struct {
 	WSConnections        int64
 	QueueDepth           int64
 	QueueSentTotal       int64
+	QueueSendFailedTotal int64
 	QueueRejectedTotal   int64
 	QueueDroppedTotal    int64
 	EventsBroadcastTotal int64
@@ -70,6 +72,10 @@ func (m *Metrics) SetQueueDepth(depth int) {
 
 func (m *Metrics) IncQueueSent() {
 	m.queueSentTotal.Add(1)
+}
+
+func (m *Metrics) IncQueueSendFailed() {
+	m.queueSendFailedTotal.Add(1)
 }
 
 func (m *Metrics) IncQueueRejected() {
@@ -161,6 +167,7 @@ func (m *Metrics) Snapshot() MetricsSnapshot {
 		WSConnections:        m.wsConnections.Load(),
 		QueueDepth:           m.queueDepth.Load(),
 		QueueSentTotal:       m.queueSentTotal.Load(),
+		QueueSendFailedTotal: m.queueSendFailedTotal.Load(),
 		QueueRejectedTotal:   m.queueRejectedTotal.Load(),
 		QueueDroppedTotal:    m.queueDroppedTotal.Load(),
 		EventsBroadcastTotal: m.eventsBroadcastTotal.Load(),

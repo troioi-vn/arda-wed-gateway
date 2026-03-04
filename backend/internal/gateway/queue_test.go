@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"reflect"
@@ -23,7 +24,7 @@ func TestCommandQueueBurstOrderAndRateLimit(t *testing.T) {
 	queue := NewCommandQueue("s-test", 20, interval, func(_ context.Context, command string) error {
 		sent <- sentCommand{command: command, at: time.Now()}
 		return nil
-	}, slog.Default(), NewMetrics())
+	}, slog.Default(), NewMetrics(), nil)
 
 	queue.Start()
 	defer queue.StopAndDrop()
@@ -69,7 +70,7 @@ func TestCommandQueueRejectsWhenFull(t *testing.T) {
 
 	queue := NewCommandQueue("s-test", 3, time.Second, func(_ context.Context, _ string) error {
 		return nil
-	}, slog.Default(), NewMetrics())
+	}, slog.Default(), NewMetrics(), nil)
 
 	for i := 0; i < 3; i++ {
 		if _, err := queue.Enqueue("x"); err != nil {
@@ -94,7 +95,7 @@ func TestCommandQueueStopDropsPending(t *testing.T) {
 
 	queue := NewCommandQueue("s-test", 20, time.Hour, func(_ context.Context, _ string) error {
 		return nil
-	}, slog.Default(), NewMetrics())
+	}, slog.Default(), NewMetrics(), nil)
 	queue.Start()
 
 	for i := 0; i < 5; i++ {
@@ -109,5 +110,50 @@ func TestCommandQueueStopDropsPending(t *testing.T) {
 	}
 	if depth := queue.Depth(); depth != 0 {
 		t.Fatalf("expected depth 0 after stop, got %d", depth)
+	}
+}
+
+func TestCommandQueueSendFailureIncrementsMetricAndCallsFailureHook(t *testing.T) {
+	t.Parallel()
+
+	metrics := NewMetrics()
+	failures := make(chan sentCommand, 1)
+
+	queue := NewCommandQueue(
+		"s-test",
+		20,
+		10*time.Millisecond,
+		func(_ context.Context, _ string) error {
+			return errors.New("write timeout")
+		},
+		slog.Default(),
+		metrics,
+		func(command string, _ error, queueDepth int, queueMax int) {
+			failures <- sentCommand{
+				command: fmt.Sprintf("%s:%d/%d", command, queueDepth, queueMax),
+				at:      time.Now(),
+			}
+		},
+	)
+
+	queue.Start()
+	defer queue.StopAndDrop()
+
+	if _, err := queue.Enqueue("look"); err != nil {
+		t.Fatalf("enqueue command: %v", err)
+	}
+
+	select {
+	case failure := <-failures:
+		if failure.command != "look:0/20" {
+			t.Fatalf("unexpected failure payload: %q", failure.command)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected failure hook to be called")
+	}
+
+	snapshot := metrics.Snapshot()
+	if snapshot.QueueSendFailedTotal != 1 {
+		t.Fatalf("expected queue send failed metric=1, got %d", snapshot.QueueSendFailedTotal)
 	}
 }

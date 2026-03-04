@@ -11,6 +11,7 @@ import (
 var ErrQueueFull = errors.New("command queue is full")
 
 type SenderFunc func(context.Context, string) error
+type SendFailureFunc func(command string, err error, queueDepth int, queueMax int)
 
 type CommandQueue struct {
 	mu       sync.Mutex
@@ -22,13 +23,14 @@ type CommandQueue struct {
 	sender    SenderFunc
 	logger    *slog.Logger
 	metrics   *Metrics
+	onFailure SendFailureFunc
 
 	running bool
 	stopCh  chan struct{}
 	doneCh  chan struct{}
 }
 
-func NewCommandQueue(sessionID string, maxDepth int, interval time.Duration, sender SenderFunc, logger *slog.Logger, metrics *Metrics) *CommandQueue {
+func NewCommandQueue(sessionID string, maxDepth int, interval time.Duration, sender SenderFunc, logger *slog.Logger, metrics *Metrics, onFailure SendFailureFunc) *CommandQueue {
 	return &CommandQueue{
 		commands:  make([]string, 0, maxDepth),
 		sessionID: sessionID,
@@ -37,6 +39,7 @@ func NewCommandQueue(sessionID string, maxDepth int, interval time.Duration, sen
 		sender:    sender,
 		logger:    logger,
 		metrics:   metrics,
+		onFailure: onFailure,
 	}
 }
 
@@ -126,7 +129,12 @@ func (q *CommandQueue) run(stopCh <-chan struct{}, doneCh chan<- struct{}) {
 
 			start := time.Now()
 			if err := q.sender(context.Background(), command); err != nil {
-				q.logger.Error("command send failed", "error", err.Error())
+				q.metrics.IncQueueSendFailed()
+				queueDepth := q.Depth()
+				q.logger.Error("command send failed", "command", command, "queue_depth", queueDepth, "queue_max", q.maxDepth, "error", err.Error())
+				if q.onFailure != nil {
+					q.onFailure(command, err, queueDepth, q.maxDepth)
+				}
 				continue
 			}
 

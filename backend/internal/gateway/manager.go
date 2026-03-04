@@ -193,10 +193,28 @@ func (m *Manager) ensureSessionLocked() *session {
 		lastActivity: time.Now().UTC(),
 	}
 
-	s.queue = NewCommandQueue(sessionID, m.queueMaxDepth, m.queueInterval, func(ctx context.Context, command string) error {
-		_ = ctx
-		return m.writeCommand(sessionID, command)
-	}, m.logger.With("session_id", sessionID), m.metrics)
+	s.queue = NewCommandQueue(
+		sessionID,
+		m.queueMaxDepth,
+		m.queueInterval,
+		func(ctx context.Context, command string) error {
+			_ = ctx
+			return m.writeCommand(sessionID, command)
+		},
+		m.logger.With("session_id", sessionID),
+		m.metrics,
+		func(command string, err error, queueDepth int, queueMax int) {
+			m.Broadcast(TerminalEvent{
+				Event:      "queue.send_failed",
+				SessionID:  sessionID,
+				Text:       command,
+				QueueDepth: queueDepth,
+				QueueMax:   queueMax,
+				Timestamp:  nowRFC3339Nano(),
+			})
+			m.logger.Error("queue send failure event broadcast", "session_id", sessionID, "command", command, "queue_depth", queueDepth, "queue_max", queueMax, "error", err.Error())
+		},
+	)
 
 	m.session = s
 	return s
