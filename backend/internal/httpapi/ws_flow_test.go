@@ -32,6 +32,11 @@ type terminalEvent struct {
 	QueueMax   int    `json:"queue_max"`
 }
 
+type upstreamCommand struct {
+	command string
+	at      time.Time
+}
+
 func TestWebSocketGatewayFlowSmoke(t *testing.T) {
 	t.Parallel()
 
@@ -168,6 +173,172 @@ func TestWebSocketGatewayDecodesCP1251Output(t *testing.T) {
 	}
 }
 
+func TestWebSocketQueueBurstPacingAndRejects(t *testing.T) {
+	t.Parallel()
+
+	const (
+		queueInterval = 120 * time.Millisecond
+		queueMaxDepth = 3
+		totalBurst    = 10
+	)
+
+	upstream := newFakeUpstream(t)
+	defer upstream.Close()
+
+	handler := NewRouter(config.Config{
+		Host:              "127.0.0.1",
+		Port:              "8080",
+		BuildVersion:      "test",
+		BuildCommit:       "abc123",
+		QueueSendInterval: queueInterval,
+		QueueMaxDepth:     queueMaxDepth,
+	}, slog.Default())
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen tcp4: %v", err)
+	}
+	server := &http.Server{Handler: handler}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Close()
+
+	baseURL := "http://" + listener.Addr().String()
+	conn := dialWebSocket(t, baseURL, "/api/v0/ws/terminal")
+	defer conn.Close()
+	_ = readEvent(t, conn)
+
+	status := postJSON(t, baseURL+"/api/v0/session/connect", map[string]any{
+		"host": "127.0.0.1",
+		"port": upstream.Port(),
+	})
+	if status != http.StatusOK {
+		t.Fatalf("connect status: expected 200, got %d", status)
+	}
+	_ = readUntilEvent(t, conn, "session.connected", 2*time.Second)
+
+	accepted := 0
+	rejected := 0
+	for i := 0; i < totalBurst; i++ {
+		command := fmt.Sprintf("cmd-%d", i)
+		status = postJSON(t, baseURL+"/api/v0/commands/enqueue", map[string]any{"command": command})
+		switch status {
+		case http.StatusOK:
+			accepted++
+		case http.StatusTooManyRequests:
+			rejected++
+		default:
+			t.Fatalf("unexpected enqueue status for %s: %d", command, status)
+		}
+	}
+
+	if accepted != queueMaxDepth {
+		t.Fatalf("expected %d accepted commands before queue filled, got %d", queueMaxDepth, accepted)
+	}
+	if rejected != totalBurst-queueMaxDepth {
+		t.Fatalf("expected %d rejected commands, got %d", totalBurst-queueMaxDepth, rejected)
+	}
+
+	sent := make([]upstreamCommand, 0, queueMaxDepth)
+	for i := 0; i < queueMaxDepth; i++ {
+		sent = append(sent, upstream.WaitCommandWithTimestamp(t, 2*time.Second))
+	}
+
+	for i := 0; i < queueMaxDepth; i++ {
+		want := fmt.Sprintf("cmd-%d", i)
+		if sent[i].command != want {
+			t.Fatalf("unexpected upstream command order at %d: want %q, got %q", i, want, sent[i].command)
+		}
+	}
+
+	for i := 1; i < len(sent); i++ {
+		delta := sent[i].at.Sub(sent[i-1].at)
+		if delta < queueInterval-20*time.Millisecond {
+			t.Fatalf("queue pacing too fast at index %d: delta=%s interval=%s", i, delta, queueInterval)
+		}
+	}
+}
+
+func TestWebSocketReconnectDoesNotReplayDroppedCommands(t *testing.T) {
+	t.Parallel()
+
+	upstream := newFakeUpstream(t)
+	defer upstream.Close()
+
+	handler := NewRouter(config.Config{
+		Host:              "127.0.0.1",
+		Port:              "8080",
+		BuildVersion:      "test",
+		BuildCommit:       "abc123",
+		QueueSendInterval: 300 * time.Millisecond,
+		QueueMaxDepth:     20,
+	}, slog.Default())
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen tcp4: %v", err)
+	}
+	server := &http.Server{Handler: handler}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer server.Close()
+
+	baseURL := "http://" + listener.Addr().String()
+	conn := dialWebSocket(t, baseURL, "/api/v0/ws/terminal")
+	defer conn.Close()
+	_ = readEvent(t, conn)
+
+	status := postJSON(t, baseURL+"/api/v0/session/connect", map[string]any{
+		"host": "127.0.0.1",
+		"port": upstream.Port(),
+	})
+	if status != http.StatusOK {
+		t.Fatalf("connect status: expected 200, got %d", status)
+	}
+	_ = readUntilEvent(t, conn, "session.connected", 2*time.Second)
+
+	if status = postJSON(t, baseURL+"/api/v0/commands/enqueue", map[string]any{"command": "first"}); status != http.StatusOK {
+		t.Fatalf("enqueue first status: expected 200, got %d", status)
+	}
+	if status = postJSON(t, baseURL+"/api/v0/commands/enqueue", map[string]any{"command": "second"}); status != http.StatusOK {
+		t.Fatalf("enqueue second status: expected 200, got %d", status)
+	}
+
+	if got := upstream.WaitCommand(t, 2*time.Second); got != "first" {
+		t.Fatalf("expected first upstream command, got %q", got)
+	}
+
+	status = postJSON(t, baseURL+"/api/v0/session/disconnect", map[string]any{})
+	if status != http.StatusOK {
+		t.Fatalf("disconnect status: expected 200, got %d", status)
+	}
+
+	disconnected := readUntilEvent(t, conn, "session.disconnected", 2*time.Second)
+	if !strings.Contains(disconnected.Text, "dropped_unsent=1") {
+		t.Fatalf("expected dropped_unsent=1 in disconnect event, got %q", disconnected.Text)
+	}
+
+	status = postJSON(t, baseURL+"/api/v0/session/connect", map[string]any{
+		"host": "127.0.0.1",
+		"port": upstream.Port(),
+	})
+	if status != http.StatusOK {
+		t.Fatalf("reconnect status: expected 200, got %d", status)
+	}
+	_ = readUntilEvent(t, conn, "session.connected", 2*time.Second)
+
+	upstream.AssertNoCommand(t, 450*time.Millisecond)
+
+	if status = postJSON(t, baseURL+"/api/v0/commands/enqueue", map[string]any{"command": "third"}); status != http.StatusOK {
+		t.Fatalf("enqueue third status: expected 200, got %d", status)
+	}
+	if got := upstream.WaitCommand(t, 2*time.Second); got != "third" {
+		t.Fatalf("expected third upstream command after reconnect, got %q", got)
+	}
+}
+
 func readUntilEvent(t *testing.T, conn net.Conn, eventType string, timeout time.Duration) terminalEvent {
 	t.Helper()
 
@@ -297,11 +468,14 @@ type prefixedConn struct {
 }
 
 type fakeUpstream struct {
-	listener net.Listener
-	commands chan string
-	connMu   sync.Mutex
-	conn     net.Conn
-	wg       sync.WaitGroup
+	listener        net.Listener
+	commands        chan upstreamCommand
+	connMu          sync.Mutex
+	conn            net.Conn
+	respMu          sync.RWMutex
+	responses       map[string]string
+	defaultResponse string
+	wg              sync.WaitGroup
 }
 
 func newFakeUpstream(t *testing.T) *fakeUpstream {
@@ -313,8 +487,10 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 	}
 
 	f := &fakeUpstream{
-		listener: listener,
-		commands: make(chan string, 8),
+		listener:        listener,
+		commands:        make(chan upstreamCommand, 32),
+		responses:       map[string]string{},
+		defaultResponse: "вы видите землю\n",
 	}
 	f.wg.Add(1)
 	go f.run()
@@ -324,13 +500,21 @@ func newFakeUpstream(t *testing.T) *fakeUpstream {
 func (f *fakeUpstream) run() {
 	defer f.wg.Done()
 
-	conn, err := f.listener.Accept()
-	if err != nil {
-		return
+	for {
+		conn, err := f.listener.Accept()
+		if err != nil {
+			return
+		}
+
+		f.connMu.Lock()
+		f.conn = conn
+		f.connMu.Unlock()
+
+		f.handleConn(conn)
 	}
-	f.connMu.Lock()
-	f.conn = conn
-	f.connMu.Unlock()
+}
+
+func (f *fakeUpstream) handleConn(conn net.Conn) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
@@ -339,15 +523,39 @@ func (f *fakeUpstream) run() {
 		if err != nil {
 			return
 		}
+
 		command := strings.TrimSpace(line)
-		f.commands <- command
+		f.commands <- upstreamCommand{command: command, at: time.Now()}
+
+		response := f.responseForCommand(command)
+		if response == "" {
+			continue
+		}
+
 		encoder := charmap.Windows1251.NewEncoder()
-		payload, err := encoder.Bytes([]byte("вы видите землю\n"))
+		payload, err := encoder.Bytes([]byte(response))
 		if err != nil {
 			return
 		}
-		_, _ = conn.Write(payload)
+		if _, err := conn.Write(payload); err != nil {
+			return
+		}
 	}
+}
+
+func (f *fakeUpstream) responseForCommand(command string) string {
+	f.respMu.RLock()
+	defer f.respMu.RUnlock()
+	if response, ok := f.responses[command]; ok {
+		return response
+	}
+	return f.defaultResponse
+}
+
+func (f *fakeUpstream) SetResponse(command, response string) {
+	f.respMu.Lock()
+	defer f.respMu.Unlock()
+	f.responses[command] = response
 }
 
 func (f *fakeUpstream) Port() int {
@@ -359,12 +567,29 @@ func (f *fakeUpstream) Port() int {
 func (f *fakeUpstream) WaitCommand(t *testing.T, timeout time.Duration) string {
 	t.Helper()
 
+	return f.WaitCommandWithTimestamp(t, timeout).command
+}
+
+func (f *fakeUpstream) WaitCommandWithTimestamp(t *testing.T, timeout time.Duration) upstreamCommand {
+	t.Helper()
+
 	select {
 	case cmd := <-f.commands:
 		return cmd
 	case <-time.After(timeout):
 		t.Fatal("timed out waiting for upstream command")
-		return ""
+		return upstreamCommand{}
+	}
+}
+
+func (f *fakeUpstream) AssertNoCommand(t *testing.T, timeout time.Duration) {
+	t.Helper()
+
+	select {
+	case cmd := <-f.commands:
+		t.Fatalf("expected no upstream command within %s, but received %q", timeout, cmd.command)
+	case <-time.After(timeout):
+		return
 	}
 }
 
