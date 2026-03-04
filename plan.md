@@ -49,6 +49,7 @@ Planning style: iterative, high-detail, capability-based milestones
 29. WebSocket runtime contract now includes explicit `session.status` bootstrap event for frontend hydration.
 30. Metrics baseline now includes queue send latency histogram and dropped-unsent per-session counter labels.
 31. Temporary UI-side trigger support is enabled via `frontend/src/tmp-triggers.json` (substring text match -> enqueue action list in order).
+32. Error observability baseline now includes request-correlated completion logs (`request_id`, status, bytes, latency), explicit root-cause logs for `INTERNAL_ERROR` branches, JSON response write-failure logging, and queue send-failure visibility (`gateway_queue_send_failed_total`, WS `queue.send_failed` event).
 
 ---
 
@@ -276,7 +277,7 @@ Acceptance:
 
 ---
 
-## 7) Implementation Defaults (Iterations 2-4)
+## 7) Implementation Defaults (Iterations 2-5)
 
 1. **User/session model**
    - Build for single-player runtime first.
@@ -339,6 +340,11 @@ Acceptance:
    - Do not auto-replay unsent commands after reconnect in MVP.
    - Surface reconnection + dropped-unsent count in status and logs.
    - Emit `session.status` on WS subscribe so frontend can hydrate current queue/session state without waiting for a transition event.
+12. **Temporary UI trigger policy (Iteration 5)**
+   - Configuration source: `frontend/src/tmp-triggers.json`.
+   - Match policy: simple substring contains check over ANSI-stripped terminal output lines.
+   - Execution policy: enqueue matched trigger actions sequentially in listed order.
+   - Scope: temporary frontend helper only; no backend persistence or API contract guarantees.
 
 ---
 
@@ -398,7 +404,7 @@ Iteration 5 planning outputs:
 
 ## 10) Immediate Next Actions
 
-1. Keep docs synchronized for M1-10 completion (`plan.md`, `docs/roadmap.md`, `README.md`).
+1. Keep docs synchronized for M1-11 completion (`plan.md`, `docs/roadmap.md`, `README.md`).
 2. Convert Iteration 5 planning focus items into concrete M2 task slicing with acceptance criteria and test strategy.
 3. Define OpenAPI impacts for M2 surfaces before implementation (`v0` additions vs `v1` transition strategy).
 4. Finalize operational defaults for background LLM mode and release/feature-flag policy.

@@ -26,7 +26,10 @@ Milestone 1 progress:
 - M1-09 shipped (2026-03-05): OpenAPI v0 now matches backend session/state/suggestions envelopes and frontend HTTP usage is Orval-generated.
 - M1-10 shipped (2026-03-05): integration hardening completed (queue burst pacing/reject tests, reconnect no-replay checks, fixture-backed snapshot regression, full backend/frontend test gate pass).
 - M1-11 shipped (2026-03-05): temporary frontend trigger runner reads `frontend/src/tmp-triggers.json` and enqueues mapped commands when trigger text appears in terminal output.
+- M1-12 shipped (2026-03-05): suggestion UX controls added (`Refuse` action + AI On/Off toggle); accept/refuse now clears current suggestion and starts a fresh suggestion cycle.
+- M1-13 shipped (2026-03-05): suggestion reliability hardening completed (markdown-fenced JSON normalization, increased OpenRouter timeout default, single retry on timeout-class failures).
 - M1-15 groundwork shipped: metrics include send-latency histogram and dropped-unsent counters per session.
+- M1-16 shipped (2026-03-05): error observability hardening completed (request correlation logs with `request_id/status/latency`, root-cause logging before `INTERNAL_ERROR`, JSON write-failure logs, queue send-failure metric/event `gateway_queue_send_failed_total` + `queue.send_failed`).
 
 Upcoming planning focus (post-M1):
 - M2: explicit parser-state resync flow and terminal burst-output responsiveness safeguards.
@@ -38,6 +41,19 @@ Upcoming planning focus (post-M1):
 - Correct CP1251 text decoding and SMAUG `Я` artifact behavior.
 - Add practical AI assistance (suggestions first, autonomy later with safety guards).
 - Maintain observability and predictable operations from day one.
+
+## Features (Current)
+- Live browser terminal over WebSocket with real Telnet upstream bridge.
+- Command queue/rate limiting (default 500ms pacing, max depth 20, overflow reject).
+- Queue visibility and user feedback (`QUEUE_FULL` inline status + toasts).
+- CP1251 decoding with SMAUG lowercase `Я` artifact correction.
+- Fixture-backed parser/state extraction baseline and snapshot API surface.
+- AI Auto-Suggest pipeline with strict JSON contract (`commands`, `reason`, `expected_outcome`).
+- Suggestion freshness controls (debounce + stale-response discard).
+- Suggestion UX controls: clickable command actions, explicit `Refuse`, and `AI On/Off` toggle.
+- Suggestion reliability guards: fenced JSON normalization and timeout retry hardening.
+- OpenAPI v0 + Orval-generated frontend client kept in contract sync.
+- Structured observability (request correlation logs + queue send-failure metric/event).
 
 ## Non-Goals (MVP)
 - Full autonomous gameplay loop.
@@ -84,6 +100,7 @@ Consistency rule:
 - Reconnect policy: no automatic replay of unsent queued commands after reconnect.
 - Suggestion freshness: short debounce window and stale-response discard.
 - Temporary UI trigger policy: substring match against ANSI-stripped terminal output, then enqueue matched trigger `actions` sequentially.
+- Logging policy: request completion logs include `request_id`, method/path, HTTP status, bytes, and latency; internal handler failures log root cause before returning generic `INTERNAL_ERROR`.
 
 ## Milestone Outline
 - M1: Playable Gateway + Suggestions.

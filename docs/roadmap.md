@@ -40,6 +40,9 @@ Outcome:
 - M1-09 shipped (2026-03-05): OpenAPI v0 and Orval-generated frontend client are synchronized with backend session/state/suggestions contracts.
 - M1-10 shipped (2026-03-05): integration hardening pass completed (WS smoke + queue burst/reject + reconnect no-replay + fixture-backed snapshot regression + release checklist).
 - M1-11 shipped (2026-03-05): temporary frontend trigger runner reads `frontend/src/tmp-triggers.json` and enqueues mapped commands on terminal text matches.
+- M1-12 shipped (2026-03-05): suggestion UX controls added (`Refuse` action + AI On/Off toggle) and accept/refuse now starts a fresh suggestion cycle.
+- M1-13 shipped (2026-03-05): suggestion reliability hardening completed (markdown-fenced JSON normalization + timeout/retry resilience for OpenRouter requests).
+- M1-16 shipped (2026-03-05): error/logging hardening completed (request-level correlation logs, internal root-cause logs, JSON write-failure logging, queue send-failure metric + websocket event).
 
 Exit criteria:
 - Stable connect/send/receive loop in browser.
@@ -80,7 +83,7 @@ Exit criteria:
 - Macros are rejected safely with explicit feedback when start-state safety preconditions are not met.
 
 ## Cross-Cutting Streams
-- Observability: structured logs + core metrics from early stages (including queue send-latency histogram and dropped-unsent per-session counters).
+- Observability: structured logs + core metrics from early stages (including request-level correlation fields, queue send-latency histogram, queue send-failure counter, and dropped-unsent per-session counters).
 - Testing: balanced unit + integration strategy with parser golden fixtures, Telnet negotiation traces, and simulator-backed flow tests.
 - Developer Experience: OpenAPI + Orval workflow, reproducible local + Docker parity.
 
