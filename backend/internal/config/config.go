@@ -40,7 +40,7 @@ func Load() Config {
 		OpenRouterBaseURL:  getenv("APP_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
 		OpenRouterModel:    getenv("APP_OPENROUTER_MODEL", "openai/gpt-4o-mini"),
 		OpenRouterAPIKey:   os.Getenv("APP_OPENROUTER_API_KEY"),
-		OpenRouterTimeout:  getenvDuration("APP_OPENROUTER_TIMEOUT", 25*time.Second),
+		OpenRouterTimeout:  getenvDuration("APP_OPENROUTER_TIMEOUT", 120*time.Second),
 	}
 }
 

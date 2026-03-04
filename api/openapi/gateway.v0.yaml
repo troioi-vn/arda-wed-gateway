@@ -100,7 +100,7 @@ paths:
   /api/v0/suggestions/latest:
     get:
       operationId: getSuggestionsLatest
-      summary: Latest valid suggestion set
+      summary: Latest suggestion payload and runtime status
       responses:
         "200":
           description: Latest suggestion payload
@@ -108,6 +108,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuccessSuggestionResponse"
+  /api/v0/suggestions/cancel:
+    post:
+      operationId: postSuggestionsCancel
+      summary: Cancel all in-flight suggestion requests
+      responses:
+        "200":
+          description: Cancel request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessSuggestionCancelResponse"
   /api/v0/commands/enqueue:
     post:
       operationId: postCommandsEnqueue
@@ -260,10 +271,34 @@ components:
         generated_at:
           type: string
           format: date-time
-    SuggestionPayloadOrEmpty:
-      oneOf:
-        - $ref: "#/components/schemas/SuggestionPayload"
-        - $ref: "#/components/schemas/EmptyObject"
+    SuggestionLatestPayload:
+      type: object
+      required: [in_progress]
+      properties:
+        in_progress:
+          type: boolean
+        last_error:
+          type: string
+        last_error_at:
+          type: string
+          format: date-time
+        commands:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+        expected_outcome:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+    SuggestionCancelPayload:
+      type: object
+      required: [canceled]
+      properties:
+        canceled:
+          type: boolean
     StateSnapshotPayload:
       type: object
       properties:
@@ -555,7 +590,15 @@ components:
       required: [data, meta]
       properties:
         data:
-          $ref: "#/components/schemas/SuggestionPayloadOrEmpty"
+          $ref: "#/components/schemas/SuggestionLatestPayload"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    SuccessSuggestionCancelResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/SuggestionCancelPayload"
         meta:
           $ref: "#/components/schemas/Meta"
     SuccessEnqueueResponse:

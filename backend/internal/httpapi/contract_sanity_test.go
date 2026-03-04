@@ -135,7 +135,13 @@ func TestContractSuggestionsLatestEmptyShape(t *testing.T) {
 		t.Fatalf("unmarshal suggestions latest: %v", err)
 	}
 
-	if string(payload.Data) != "{}" {
-		t.Fatalf("expected empty object data, got %s", string(payload.Data))
+	var data struct {
+		InProgress bool `json:"in_progress"`
+	}
+	if err := json.Unmarshal(payload.Data, &data); err != nil {
+		t.Fatalf("unmarshal suggestions latest data: %v", err)
+	}
+	if data.InProgress {
+		t.Fatalf("expected in_progress=false, got true")
 	}
 }

@@ -41,6 +41,8 @@ type stateSnapshotter interface {
 
 type suggestionProvider interface {
 	Latest() (suggestions.Suggestion, bool)
+	Status() suggestions.RuntimeStatus
+	CancelInFlight() bool
 }
 
 func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
@@ -77,6 +79,7 @@ func NewRouter(cfg config.Config, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /api/v0/session/status", r.handleSessionStatus)
 	mux.HandleFunc("GET /api/v0/state/snapshot", r.handleStateSnapshot)
 	mux.HandleFunc("GET /api/v0/suggestions/latest", r.handleSuggestionsLatest)
+	mux.HandleFunc("POST /api/v0/suggestions/cancel", r.handleSuggestionsCancel)
 	mux.HandleFunc("POST /api/v0/session/connect", r.handleSessionConnect)
 	mux.HandleFunc("POST /api/v0/session/disconnect", r.handleSessionDisconnect)
 	mux.HandleFunc("POST /api/v0/commands/enqueue", r.handleEnqueueCommand)

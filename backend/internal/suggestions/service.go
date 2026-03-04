@@ -31,6 +31,12 @@ type Suggestion struct {
 	GeneratedAt     string   `json:"generated_at,omitempty"`
 }
 
+type RuntimeStatus struct {
+	InProgress  bool   `json:"in_progress"`
+	LastError   string `json:"last_error,omitempty"`
+	LastErrorAt string `json:"last_error_at,omitempty"`
+}
+
 type Service struct {
 	logger           *slog.Logger
 	client           Client
@@ -42,6 +48,10 @@ type Service struct {
 	recentBySess map[string][]string
 	timerBySess  map[string]*time.Timer
 	jobSeqBySess map[string]uint64
+	activeBySess map[string]map[uint64]context.CancelFunc
+	inFlight     int
+	lastError    string
+	lastErrorAt  time.Time
 	latest       Suggestion
 	latestFound  bool
 }
@@ -63,6 +73,7 @@ func NewService(logger *slog.Logger, client Client, snapshots SnapshotProvider, 
 		recentBySess:     make(map[string][]string),
 		timerBySess:      make(map[string]*time.Timer),
 		jobSeqBySess:     make(map[string]uint64),
+		activeBySess:     make(map[string]map[uint64]context.CancelFunc),
 	}
 }
 
@@ -98,21 +109,60 @@ func (s *Service) Latest() (Suggestion, bool) {
 	return copySuggestion, true
 }
 
+func (s *Service) Status() RuntimeStatus {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	status := RuntimeStatus{
+		InProgress: s.inFlight > 0,
+	}
+	if strings.TrimSpace(s.lastError) != "" {
+		status.LastError = s.lastError
+		status.LastErrorAt = s.lastErrorAt.UTC().Format(time.RFC3339Nano)
+	}
+	return status
+}
+
+func (s *Service) CancelInFlight() bool {
+	s.mu.RLock()
+	cancels := make([]context.CancelFunc, 0, s.inFlight)
+	for _, bySeq := range s.activeBySess {
+		for _, cancel := range bySeq {
+			cancels = append(cancels, cancel)
+		}
+	}
+	s.mu.RUnlock()
+
+	if len(cancels) == 0 {
+		return false
+	}
+	for _, cancel := range cancels {
+		cancel()
+	}
+	return true
+}
+
 func (s *Service) runJob(sessionID string, seq uint64) {
 	prompt, err := s.buildPrompt(sessionID)
 	if err != nil {
+		s.setLastError("build suggestion prompt failed: " + err.Error())
 		s.logger.Warn("suggestion prompt build failed", "session_id", sessionID, "job_seq", seq, "error", err.Error())
 		return
 	}
 
-	response, err := s.client.RequestSuggestion(context.Background(), prompt)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.markInFlight(sessionID, seq, cancel)
+	defer s.markCompleted(sessionID, seq)
+
+	response, err := s.client.RequestSuggestion(ctx, prompt)
 	if err != nil {
+		s.setLastError(err.Error())
 		s.logger.Warn("suggestion request failed", "session_id", sessionID, "job_seq", seq, "error", err.Error())
 		return
 	}
 
 	parsed, err := parseSuggestionJSON(response)
 	if err != nil {
+		s.setLastError("invalid suggestion json: " + err.Error())
 		s.logger.Warn("suggestion json parse failed", "session_id", sessionID, "job_seq", seq, "error", err.Error())
 		return
 	}
@@ -127,6 +177,48 @@ func (s *Service) runJob(sessionID string, seq uint64) {
 
 	s.latest = parsed
 	s.latestFound = true
+	s.lastError = ""
+	s.lastErrorAt = time.Time{}
+}
+
+func (s *Service) markInFlight(sessionID string, seq uint64, cancel context.CancelFunc) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.activeBySess[sessionID] == nil {
+		s.activeBySess[sessionID] = make(map[uint64]context.CancelFunc)
+	}
+	s.activeBySess[sessionID][seq] = cancel
+	s.inFlight++
+}
+
+func (s *Service) markCompleted(sessionID string, seq uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	bySeq := s.activeBySess[sessionID]
+	if bySeq == nil {
+		return
+	}
+	if _, ok := bySeq[seq]; !ok {
+		return
+	}
+	delete(bySeq, seq)
+	if len(bySeq) == 0 {
+		delete(s.activeBySess, sessionID)
+	}
+	if s.inFlight > 0 {
+		s.inFlight--
+	}
+}
+
+func (s *Service) setLastError(message string) {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastError = trimmed
+	s.lastErrorAt = time.Now().UTC()
 }
 
 func (s *Service) buildPrompt(sessionID string) (string, error) {

@@ -35,7 +35,7 @@ func NewOpenRouterClient(baseURL, model, apiKey string, timeout time.Duration) *
 		model = "openai/gpt-4o-mini"
 	}
 	if timeout <= 0 {
-		timeout = 25 * time.Second
+		timeout = 120 * time.Second
 	}
 
 	return &OpenRouterClient{
